@@ -146,6 +146,7 @@ export default function CarScanner() {
       body: JSON.stringify({ messages }),
     });
     const data = await res.json();
+    if (data.error) throw new Error(data.error);
     const text = data.content.filter(c => c.type === "text").map(c => c.text).join("\n");
     return JSON.parse(text.replace(/```json|```/g, "").trim());
   };
@@ -291,7 +292,7 @@ Solo cuando el candidato principal tiene ≥ ${CONFIDENCE_THRESHOLD}% de confian
       setHistory([...messages, { role: "assistant", content: JSON.stringify(parsed) }]);
       handleParsed(parsed);
     } catch (e) {
-      setErrorMsg("No pude leer la respuesta. Intenta con otra foto.");
+      setErrorMsg(e.message || "No pude leer la respuesta. Intenta con otra foto.");
       setStage("error");
     }
   };
@@ -357,7 +358,7 @@ Solo cuando el candidato principal tiene ≥ ${CONFIDENCE_THRESHOLD}% de confian
           Seleccionar foto
         </div>
       </div>
-      <input ref={fileRef} type="file" accept="image/*" capture="environment" onChange={onFile} style={{ display: "none" }} />
+      <input ref={fileRef} type="file" accept="image/*" onChange={onFile} style={{ display: "none" }} />
     </label>
   );
 
