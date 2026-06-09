@@ -424,6 +424,10 @@ export default function CarScanner() {
   const [livePrice, setLivePrice] = useState(null);
   const [priceFetching, setPriceFetching] = useState(false);
   const [sightingStatus, setSightingStatus] = useState(null);
+  const [shareStatus, setShareStatus] = useState(null);
+  const [customAnswer, setCustomAnswer] = useState("");
+  const [showQR, setShowQR] = useState(false);
+  const [sharedCar, setSharedCar] = useState(null);
   const fileRef = useRef(null);
 
   useEffect(() => {
@@ -432,6 +436,15 @@ export default function CarScanner() {
       if (raw) setDb(JSON.parse(raw));
       const sc = localStorage.getItem(DB_KEY + "-count");
       if (sc) setScanCount(parseInt(sc, 10));
+    } catch (e) {}
+    try {
+      const params = new URLSearchParams(window.location.search);
+      const carParam = params.get("car");
+      if (carParam) {
+        const car = JSON.parse(atob(decodeURIComponent(carParam)));
+        setSharedCar(car);
+        setView("shared");
+      }
     } catch (e) {}
   }, []);
 
@@ -450,15 +463,23 @@ export default function CarScanner() {
       let next;
       if (idx >= 0) {
         next = [...prev];
-        next[idx] = { ...next[idx], confirmations: next[idx].confirmations + 1 };
+        next[idx] = { ...next[idx], confirmations: next[idx].confirmations + 1, photo: imageData || next[idx].photo };
       } else {
-        next = [{ id: Date.now(), ...car, confirmations: 1 }, ...prev];
+        next = [{ id: Date.now(), ...car, confirmations: 1, photo: imageData || null }, ...prev];
       }
       try { localStorage.setItem(DB_KEY, JSON.stringify(next)); } catch (e) {}
       return next;
     });
     setSavedToGarage(true);
     setTimeout(() => reset(), 1800);
+  };
+
+  const deleteFromDb = (id) => {
+    setDb(prev => {
+      const next = prev.filter(d => d.id !== id);
+      try { localStorage.setItem(DB_KEY, JSON.stringify(next)); } catch (e) {}
+      return next;
+    });
   };
 
   const fetchPrice = async (car) => {
@@ -592,6 +613,14 @@ Calibra rarity_score con estos referentes reales:
 - Score 8-9: Ferrari 488, Lamborghini Huracán, McLaren — 50-200
 - Score 9-10: Bugatti, Koenigsegg, ediciones únicas, prototipos — <50
 
+══ MARCAS CHINAS EN MÉXICO (2023-2026) ══
+Identifica correctamente estas marcas: BYD, MG (de SAIC — no el MG clásico inglés), Wuling, NETA, Jaecoo, OMODA, GAC AION, BAIC, Chery, Haval, Great Wall, JAC, Geely, Zeekr, NIO, Leapmotor.
+Calibración para México:
+- Score 3-4: BYD Dolphin, BYD Atto 3, MG ZS/5 — en concesionarias, presencia creciente
+- Score 4-5: BYD Seal, MG 4/Marvel R, Jaecoo J7, OMODA 5 — disponibles pero no masivos
+- Score 5-6: BYD Han, BYD Tang, GAC AION S — raros en calle
+- Score 7-8: NIO ET7, Zeekr 001, BYD Yangwang U8 — casi no vistos en México
+
 ══ REGLAS DE PRECISIÓN ══
 1. PRODUCCIÓN TOTAL: solo unidades del modelo exacto identificado. M3 ≠ BMW 3 Series.
 2. AÑOS DE PRODUCCIÓN: de la variante específica, no del chasis base.
@@ -692,11 +721,49 @@ Calibra rarity_score con estos referentes reales:
     }
   };
 
+  const buildQRUrl = (car) => {
+    const minimal = {
+      make: car.make, model: car.model, year: car.year, trim: car.trim,
+      chassis_code: car.chassis_code, generation: car.generation, body_style: car.body_style,
+      horsepower: car.horsepower, engine_displacement: car.engine_displacement,
+      engine_config: car.engine_config, aspiration: car.aspiration,
+      torque: car.torque, zero_to_100: car.zero_to_100, top_speed: car.top_speed,
+      drivetrain: car.drivetrain, transmission: car.transmission,
+      rarity_score: car.rarity_score, rarity_label: car.rarity_label,
+      production_years: car.production_years, fun_fact: car.fun_fact,
+      movie_appearances: car.movie_appearances, mexico_status: car.mexico_status,
+      units_in_mx: car.units_in_mx,
+    };
+    const encoded = encodeURIComponent(btoa(JSON.stringify(minimal)));
+    return `${window.location.origin}/?car=${encoded}`;
+  };
+
+  const shareResult = async (car, price) => {
+    const score = Number(car.rarity_score) || 0;
+    const filled = Math.round(score / 10 * 8);
+    const bar = "█".repeat(filled) + "░".repeat(8 - filled);
+    let text = `🚗 ${car.make} ${car.model}${car.year ? ` ${car.year}` : ""}`;
+    if (car.trim && String(car.trim).toLowerCase() !== "null") text += ` · ${car.trim}`;
+    if (score) text += `\n\n⭐ ${car.rarity_label || getRarityLabel(score)} (${score}/10)\n${bar}`;
+    if (car.horsepower && String(car.horsepower).toLowerCase() !== "null") text += `\n💪 ${car.horsepower}`;
+    if (car.zero_to_100 && String(car.zero_to_100).toLowerCase() !== "null") text += `\n⚡ 0-100: ${addUnit(car.zero_to_100, " s")}`;
+    if (price?.count > 0) text += `\n💰 ~$${price.median.toLocaleString("es-MX")} MXN en MercadoLibre`;
+    if (car.fun_fact && String(car.fun_fact).toLowerCase() !== "null") text += `\n\n"${car.fun_fact}"`;
+    text += "\n\n📱 Escaneado con ScanCar";
+    try {
+      if (navigator.share) { await navigator.share({ text }); }
+      else { await navigator.clipboard.writeText(text); }
+      setShareStatus("done");
+    } catch (e) { setShareStatus("error"); }
+    setTimeout(() => setShareStatus(null), 2500);
+  };
+
   const reset = () => {
     setStage("idle"); setImageData(null); setCandidates([]);
     setQuestion(null); setResult(null); setHistory([]);
     setErrorMsg(""); setFromCommunity(false); setSavedToGarage(false);
     setLivePrice(null); setPriceFetching(false); setSightingStatus(null);
+    setShareStatus(null); setCustomAnswer("");
     if (fileRef.current) fileRef.current.value = "";
   };
 
@@ -763,6 +830,37 @@ Calibra rarity_score con estos referentes reales:
             ))}
           </div>
           {question.reason && <p style={{ fontSize: 12, color: C.muted, marginTop: 12 }}>{question.reason}</p>}
+          <div style={{ marginTop: 16, borderTop: `1px solid ${C.border}`, paddingTop: 16 }}>
+            <p style={{ fontSize: 12, color: C.muted, margin: "0 0 8px" }}>¿No es ninguno? Escríbelo tú:</p>
+            <div style={{ display: "flex", gap: 8 }}>
+              <input
+                value={customAnswer}
+                onChange={e => setCustomAnswer(e.target.value)}
+                onKeyDown={e => { if (e.key === "Enter" && customAnswer.trim()) { answerQuestion(customAnswer.trim()); setCustomAnswer(""); } }}
+                placeholder="Ej: BMW Serie 3 E30"
+                style={{
+                  flex: 1, border: `1.5px solid ${C.border}`, borderRadius: r.lg,
+                  padding: "11px 14px", fontSize: 15, fontFamily: font,
+                  background: C.surface, color: C.fg, outline: "none",
+                }}
+                onFocus={e => e.target.style.borderColor = C.primary}
+                onBlur={e => e.target.style.borderColor = C.border}
+              />
+              <button
+                onClick={() => { if (customAnswer.trim()) { answerQuestion(customAnswer.trim()); setCustomAnswer(""); } }}
+                disabled={!customAnswer.trim()}
+                style={{
+                  background: customAnswer.trim() ? C.primary : C.accent,
+                  color: customAnswer.trim() ? "#fff" : C.muted,
+                  border: "none", borderRadius: r.lg, padding: "11px 18px",
+                  fontSize: 15, fontWeight: 600, cursor: customAnswer.trim() ? "pointer" : "default",
+                  fontFamily: font, flexShrink: 0,
+                }}
+              >
+                →
+              </button>
+            </div>
+          </div>
         </div>
       </div>
     </div>
@@ -804,6 +902,12 @@ Calibra rarity_score con estos referentes reales:
               {sightingStatus === "loading" ? "Obteniendo ubicación…" : sightingStatus === "error" ? "Sin permiso de ubicación" : "📍 Registrar avistamiento"}
             </button>
           )}
+          <button
+            onClick={() => shareResult(result, livePrice)}
+            style={{ width: "100%", background: "transparent", color: shareStatus === "done" ? C.green : C.fg, border: `1.5px solid ${shareStatus === "done" ? C.green : C.border}`, borderRadius: r.lg, padding: "12px", fontSize: 14, fontWeight: 500, cursor: "pointer", fontFamily: font }}
+          >
+            {shareStatus === "done" ? "¡Copiado al portapapeles!" : "↗ Compartir"}
+          </button>
           <button
             onClick={reset}
             style={{ width: "100%", background: "transparent", color: C.muted, border: "none", borderRadius: r.lg, padding: "10px", fontSize: 13, fontWeight: 400, cursor: "pointer", fontFamily: font }}
@@ -862,10 +966,13 @@ Calibra rarity_score con estos referentes reales:
                     setView("car-detail");
                     fetchPrice(d);
                   }}
-                  style={{ background: C.surface, border: `1px solid ${C.border}`, borderRadius: r.lg, padding: "14px 16px", display: "flex", justifyContent: "space-between", alignItems: "center", cursor: "pointer", textAlign: "left", fontFamily: font, width: "100%" }}
+                  style={{ background: C.surface, border: `1px solid ${C.border}`, borderRadius: r.lg, padding: "10px 16px 10px 10px", display: "flex", justifyContent: "space-between", alignItems: "center", cursor: "pointer", textAlign: "left", fontFamily: font, width: "100%", gap: 12 }}
                   onMouseEnter={e => e.currentTarget.style.background = C.accent}
                   onMouseLeave={e => e.currentTarget.style.background = C.surface}
                 >
+                  {d.photo && (
+                    <img src={d.photo} alt="" style={{ width: 56, height: 56, objectFit: "cover", borderRadius: 8, flexShrink: 0 }} />
+                  )}
                   <div style={{ flex: 1, minWidth: 0 }}>
                     <p style={{ fontSize: 15, fontWeight: 600, color: C.fg, margin: "0 0 3px" }}>{d.make} {d.model}</p>
                     <p style={{ fontSize: 12, color: C.muted, margin: 0 }}>
@@ -900,13 +1007,98 @@ Calibra rarity_score con estos referentes reales:
     if (!selectedCar) return null;
     return (
       <div>
-        <button
-          onClick={() => { setSelectedCar(null); setView("gallery"); }}
-          style={{ display: "flex", alignItems: "center", gap: 6, background: "transparent", border: "none", color: C.blue, fontSize: 15, fontWeight: 500, cursor: "pointer", fontFamily: font, padding: "0 0 16px 0" }}
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", paddingBottom: 16 }}>
+          <button
+            onClick={() => { setSelectedCar(null); setView("gallery"); }}
+            style={{ display: "flex", alignItems: "center", gap: 6, background: "transparent", border: "none", color: C.blue, fontSize: 15, fontWeight: 500, cursor: "pointer", fontFamily: font, padding: 0 }}
+          >
+            <IconBack /> Garage
+          </button>
+          <button
+            onClick={() => shareResult(selectedCar, livePrice)}
+            style={{ background: "transparent", color: shareStatus === "done" ? C.green : C.muted, border: `1px solid ${shareStatus === "done" ? C.green : C.border}`, borderRadius: r.pill, padding: "6px 14px", fontSize: 13, fontWeight: 500, cursor: "pointer", fontFamily: font }}
+          >
+            {shareStatus === "done" ? "¡Copiado!" : "↗ Compartir"}
+          </button>
+        </div>
+        <CarSheet d={selectedCar} imageUrl={selectedCar.photo} livePrice={livePrice} priceFetching={priceFetching} />
+        <div style={{ marginTop: 12, display: "flex", flexDirection: "column", gap: 8 }}>
+          <button
+            onClick={() => setShowQR(true)}
+            style={{ width: "100%", background: C.primary, color: "#fff", border: "none", borderRadius: r.lg, padding: "13px", fontSize: 15, fontWeight: 600, cursor: "pointer", fontFamily: font }}
+          >
+            QR para car show
+          </button>
+          <button
+            onClick={() => {
+              if (window.confirm(`¿Eliminar ${selectedCar.make} ${selectedCar.model} del Garage?`)) {
+                deleteFromDb(selectedCar.id);
+                setSelectedCar(null);
+                setView("gallery");
+              }
+            }}
+            style={{ width: "100%", background: "transparent", color: C.red, border: `1px solid ${C.red}20`, borderRadius: r.lg, padding: "12px", fontSize: 14, fontWeight: 500, cursor: "pointer", fontFamily: font }}
+          >
+            Eliminar del Garage
+          </button>
+        </div>
+        {renderQRModal(selectedCar)}
+      </div>
+    );
+  };
+
+  const renderShared = () => {
+    if (!sharedCar) return null;
+    return (
+      <div>
+        <div style={{ background: C.surface, borderRadius: r.xl, border: `1px solid ${C.border}`, padding: "14px 20px", marginBottom: 16, display: "flex", alignItems: "center", gap: 12 }}>
+          <span style={{ fontSize: 24 }}>🚗</span>
+          <div>
+            <p style={{ fontSize: 13, fontWeight: 600, color: C.fg, margin: 0 }}>Ficha técnica compartida</p>
+            <p style={{ fontSize: 12, color: C.muted, margin: "2px 0 0" }}>Escaneado con ScanCar</p>
+          </div>
+        </div>
+        <CarSheet d={sharedCar} livePrice={null} priceFetching={false} />
+        <div style={{ marginTop: 12 }}>
+          <button
+            onClick={() => { setSharedCar(null); setView("scan"); window.history.replaceState({}, "", "/"); }}
+            style={{ width: "100%", background: C.primary, color: "#fff", border: "none", borderRadius: r.lg, padding: "13px", fontSize: 15, fontWeight: 600, cursor: "pointer", fontFamily: font }}
+          >
+            Escanear mis propios coches
+          </button>
+        </div>
+      </div>
+    );
+  };
+
+  const renderQRModal = (car) => {
+    if (!showQR || !car) return null;
+    const url = buildQRUrl(car);
+    const qrSrc = `https://api.qrserver.com/v1/create-qr-code/?size=240x240&ecc=M&data=${encodeURIComponent(url)}`;
+    return (
+      <div
+        onClick={() => setShowQR(false)}
+        style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.55)", zIndex: 100, display: "flex", alignItems: "center", justifyContent: "center", padding: 24 }}
+      >
+        <div
+          onClick={e => e.stopPropagation()}
+          style={{ background: C.surface, borderRadius: r.xl, padding: 28, maxWidth: 320, width: "100%", textAlign: "center", boxShadow: "0 24px 60px rgba(0,0,0,0.25)" }}
         >
-          <IconBack /> Garage
-        </button>
-        <CarSheet d={selectedCar} livePrice={livePrice} priceFetching={priceFetching} />
+          <p style={{ fontSize: 18, fontWeight: 700, color: C.fg, margin: "0 0 4px" }}>{car.make} {car.model}</p>
+          <p style={{ fontSize: 13, color: C.muted, margin: "0 0 20px" }}>{car.year}{car.trim ? ` · ${car.trim}` : ""}</p>
+          <div style={{ background: "#fff", borderRadius: 12, padding: 12, display: "inline-block", border: `1px solid ${C.border}` }}>
+            <img src={qrSrc} alt="QR" width={200} height={200} style={{ display: "block" }} />
+          </div>
+          <p style={{ fontSize: 12, color: C.muted, margin: "16px 0 20px", lineHeight: 1.5 }}>
+            Ponlo en tu parabrisas.<br/>Quien lo escanee verá la ficha técnica completa.
+          </p>
+          <button
+            onClick={() => setShowQR(false)}
+            style={{ width: "100%", background: C.accent, color: C.fg, border: "none", borderRadius: r.lg, padding: "12px", fontSize: 14, fontWeight: 600, cursor: "pointer", fontFamily: font }}
+          >
+            Cerrar
+          </button>
+        </div>
       </div>
     );
   };
@@ -918,6 +1110,7 @@ Calibra rarity_score con estos referentes reales:
     { id: "map", label: "Mapa", Icon: IconMapTab },
   ];
   const activeTab = view === "car-detail" ? "gallery" : view;
+  const hideNav = view === "shared";
 
   return (
     <div style={{ minHeight: "100dvh", background: C.bg, fontFamily: font, letterSpacing: "-0.01em", WebkitFontSmoothing: "antialiased" }}>
@@ -949,10 +1142,11 @@ Calibra rarity_score con estos referentes reales:
         {view === "gallery" && renderGallery()}
         {view === "car-detail" && renderCarDetail()}
         {view === "map" && <MapView />}
+        {view === "shared" && renderShared()}
       </div>
 
       {/* Bottom navigation */}
-      <div style={{
+      {!hideNav && <div style={{
         position: "fixed", bottom: 0, left: 0, right: 0, zIndex: 20,
         background: "rgba(255,255,255,0.92)",
         backdropFilter: "blur(20px)", WebkitBackdropFilter: "blur(20px)",
@@ -984,7 +1178,7 @@ Calibra rarity_score con estos referentes reales:
             </button>
           );
         })}
-      </div>
+      </div>}
 
       <style>{`
         @keyframes dotPulse {

@@ -1,6 +1,12 @@
-import React, { useEffect, useState } from "react";
-import { MapContainer, TileLayer, CircleMarker, Popup } from "react-leaflet";
+import React, { useEffect, useState, useRef } from "react";
+import { MapContainer, TileLayer, CircleMarker, Popup, useMap } from "react-leaflet";
 import "leaflet/dist/leaflet.css";
+
+function InvalidateSize() {
+  const map = useMap();
+  useEffect(() => { setTimeout(() => map.invalidateSize(), 100); }, [map]);
+  return null;
+}
 
 const C = {
   bg: "#F5F5F7", surface: "#FFFFFF", fg: "#1D1D1F", muted: "#6E6E73",
@@ -82,6 +88,7 @@ export default function MapView() {
           style={{ height: "55vh", width: "100%" }}
           zoomControl={false}
         >
+          <InvalidateSize />
           <TileLayer
             url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
             attribution='© <a href="https://openstreetmap.org">OSM</a>'
