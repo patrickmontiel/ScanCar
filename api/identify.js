@@ -48,6 +48,7 @@ export default async function handler(req, res) {
     const data = await r.json();
 
     if (data.error) {
+      console.error("OpenAI error:", JSON.stringify(data.error));
       return res.status(500).json({ error: data.error.message });
     }
 
@@ -58,6 +59,7 @@ export default async function handler(req, res) {
       content: [{ type: "text", text }],
     });
   } catch (e) {
+    console.error("Handler exception:", String(e));
     return res.status(500).json({ error: String(e) });
   }
 }
