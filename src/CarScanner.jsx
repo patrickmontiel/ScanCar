@@ -61,7 +61,7 @@ const Tag = ({ children, dark = false }) => (
   </span>
 );
 
-// ── Image resize (performance: shrink before sending to API) ────
+// ── Image resize ────────────────────────────────────────────────
 const resizeImage = (file) => new Promise(resolve => {
   const MAX = 1024;
   const img = new Image();
@@ -88,6 +88,25 @@ const resizeImage = (file) => new Promise(resolve => {
   img.src = url;
 });
 
+// ── Rarity helpers ──────────────────────────────────────────────
+const getRarityColor = (score) => {
+  if (!score) return C.muted;
+  const n = Number(score);
+  if (n >= 9) return "#F59E0B";
+  if (n >= 7) return "#F97316";
+  if (n >= 5) return "#8B5CF6";
+  if (n >= 3) return "#007AFF";
+  return "#8E8E93";
+};
+const getRarityLabel = (score) => {
+  const n = Number(score);
+  if (n >= 9) return "Unicornio";
+  if (n >= 7) return "Muy raro";
+  if (n >= 5) return "Raro";
+  if (n >= 3) return "Poco común";
+  return "Común";
+};
+
 // ── Profile builder ─────────────────────────────────────────────
 const buildProfile = (cars) => {
   if (cars.length < 2) return null;
@@ -109,7 +128,7 @@ const buildProfile = (cars) => {
 
   const asps = cars.map(c => (c.aspiration || "").toLowerCase());
   const turbos = asps.filter(a => a.includes("turbo")).length;
-  const nas = asps.filter(a => a === "na" || a.startsWith("na ") || a.includes("atmosférico")).length;
+  const nas = asps.filter(a => a === "na" || a.startsWith("na ")).length;
   if (turbos > nas && turbos > 0) tags.push("Amante del turbo");
   else if (nas > turbos && nas > 0) tags.push("Purista NA");
 
@@ -165,8 +184,8 @@ const Section = ({ title, fields, accentColor }) => (
   </div>
 );
 
-// ── Full car sheet (reutilizable para resultado y detalle de garage) ──
-function CarSheet({ d, imageUrl }) {
+// ── Car sheet ────────────────────────────────────────────────────
+function CarSheet({ d, imageUrl, livePrice, priceFetching }) {
   const stripMm = (v) => v ? String(v).replace(/\s*mm\s*$/i, "").trim() : v;
   const addMm = (v) => {
     if (!v || String(v).toLowerCase() === "null") return v;
@@ -176,10 +195,15 @@ function CarSheet({ d, imageUrl }) {
   const dims = [d.length, d.width, d.height].every(hasVal)
     ? `${stripMm(d.length)} × ${stripMm(d.width)} × ${stripMm(d.height)} mm` : null;
 
+  const rarityScore = Number(d.rarity_score) || 0;
+  const rarityColor = getRarityColor(rarityScore);
+  const rarityLabel = d.rarity_label || getRarityLabel(rarityScore);
+
   return (
     <div style={{ background: C.surface, borderRadius: r.xl, border: `1px solid ${C.border}`, overflow: "hidden" }}>
       {imageUrl && <img src={imageUrl} alt="coche" style={{ width: "100%", display: "block", maxHeight: 220, objectFit: "cover" }} />}
 
+      {/* Identity */}
       <div style={{ padding: "20px 20px 16px" }}>
         <p style={{ fontSize: 28, fontWeight: 700, color: C.fg, margin: "0 0 10px", lineHeight: 1.1 }}>
           {d.make} {d.model}
@@ -223,6 +247,7 @@ function CarSheet({ d, imageUrl }) {
         ["Problemas conocidos", d.known_issues], ["Potencial de mod", d.mod_potential],
       ]} />
 
+      {/* Dato de fan */}
       <div style={{ borderTop: `1px solid ${C.border}`, padding: "16px 20px" }}>
         <div style={{ fontSize: 11, fontWeight: 600, letterSpacing: "0.07em", textTransform: "uppercase", color: C.muted, marginBottom: 10 }}>
           Dato de fan
@@ -235,18 +260,93 @@ function CarSheet({ d, imageUrl }) {
       </div>
 
       <Section title="Cultura" fields={[
-        ["Películas / series", d.movie_appearances], ["Celebridades", d.celebrity_connection],
+        ["Películas / series", d.movie_appearances],
+        ["Celebridades", d.celebrity_connection],
         ["Origen del nombre", d.naming_origin],
       ]} />
 
+      {/* Precio en México ahora — MercadoLibre en vivo */}
+      <div style={{ borderTop: `1px solid ${C.border}`, padding: "16px 20px" }}>
+        <p style={{ fontSize: 11, fontWeight: 600, letterSpacing: "0.07em", textTransform: "uppercase", color: C.mxGreen, margin: "0 0 14px" }}>
+          Precio en México ahora
+        </p>
+        {priceFetching ? (
+          <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+            <Spinner />
+            <span style={{ fontSize: 12, color: C.muted }}>Buscando en MercadoLibre…</span>
+          </div>
+        ) : livePrice?.count > 0 ? (
+          <>
+            <p style={{ fontSize: 32, fontWeight: 700, color: C.fg, margin: "0 0 2px", lineHeight: 1.1 }}>
+              ${livePrice.median.toLocaleString("es-MX")}
+              <span style={{ fontSize: 14, fontWeight: 400, color: C.muted, marginLeft: 8 }}>MXN</span>
+            </p>
+            <p style={{ fontSize: 12, color: C.muted, margin: "4px 0 14px" }}>
+              Precio mediano · {livePrice.count} anuncios activos en MercadoLibre
+            </p>
+            <div style={{ display: "flex", gap: 24 }}>
+              <div>
+                <p style={{ fontSize: 11, color: C.muted, margin: "0 0 3px" }}>Mínimo</p>
+                <p style={{ fontSize: 14, fontWeight: 700, color: C.green, margin: 0 }}>
+                  ${livePrice.min.toLocaleString("es-MX")}
+                </p>
+              </div>
+              <div>
+                <p style={{ fontSize: 11, color: C.muted, margin: "0 0 3px" }}>Máximo</p>
+                <p style={{ fontSize: 14, fontWeight: 700, color: C.red, margin: 0 }}>
+                  ${livePrice.max.toLocaleString("es-MX")}
+                </p>
+              </div>
+            </div>
+          </>
+        ) : (
+          <p style={{ fontSize: 13, color: C.muted, margin: 0 }}>Sin anuncios activos en este momento</p>
+        )}
+      </div>
+
+      {/* Mercado México */}
       <div style={{ borderTop: `1px solid ${C.border}` }}>
         <div style={{ fontSize: 11, fontWeight: 600, letterSpacing: "0.07em", textTransform: "uppercase", color: C.mxGreen, padding: "14px 20px 6px" }}>
           Mercado México 🇲🇽
         </div>
+
+        {/* Rareza */}
+        {rarityScore > 0 && (
+          <div style={{ padding: "10px 20px 14px", borderBottom: `1px solid ${C.border}` }}>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 8 }}>
+              <span style={{ fontSize: 13, color: C.muted }}>Rareza en México</span>
+              <span style={{
+                fontSize: 12, fontWeight: 700,
+                color: rarityColor,
+                background: rarityColor + "18",
+                borderRadius: r.pill, padding: "3px 10px",
+              }}>
+                {rarityLabel}
+              </span>
+            </div>
+            <div style={{ height: 5, background: C.accent, borderRadius: 3, overflow: "hidden" }}>
+              <div style={{
+                width: `${Math.min(rarityScore * 10, 100)}%`,
+                height: "100%",
+                background: rarityColor,
+                borderRadius: 3,
+              }} />
+            </div>
+            {d.units_in_mx && String(d.units_in_mx).toLowerCase() !== "null" && (
+              <p style={{ fontSize: 12, color: C.muted, margin: "6px 0 0" }}>
+                {d.units_in_mx} en circulación (estimado)
+              </p>
+            )}
+          </div>
+        )}
+
         {renderRows([
-          ["Estatus", d.mexico_status], ["Valor Libro Azul", d.libro_azul_estimate],
-          ["Holograma CDMX", d.holograma], ["Tenencia", d.tenencia_note],
-          ["Refacciones", d.refacciones], ["Depreciación MX", d.depreciation_mx],
+          ["Estatus", d.mexico_status],
+          ["Valor Libro Azul", d.libro_azul_estimate],
+          ["Holograma CDMX", d.holograma],
+          ["Tenencia", d.tenencia_note],
+          ["Refacciones", d.refacciones],
+          ["Depreciación MX", d.depreciation_mx],
         ])}
         <p style={{ fontSize: 11, color: C.muted, padding: "8px 20px 14px", margin: 0 }}>
           * Estimaciones. Consulta Libro Azul oficial y SEDEMA para valores exactos.
@@ -271,6 +371,8 @@ export default function CarScanner() {
   const [view, setView] = useState("scan");
   const [selectedCar, setSelectedCar] = useState(null);
   const [scanCount, setScanCount] = useState(0);
+  const [livePrice, setLivePrice] = useState(null);
+  const [priceFetching, setPriceFetching] = useState(false);
   const fileRef = useRef(null);
 
   useEffect(() => {
@@ -307,6 +409,26 @@ export default function CarScanner() {
     setSavedToGarage(true);
   };
 
+  const fetchPrice = async (car) => {
+    if (!car?.make || !car?.model) return;
+    setLivePrice(null);
+    setPriceFetching(true);
+    try {
+      const params = new URLSearchParams({
+        make: car.make,
+        model: car.model,
+        year: String(car.year || "").split(/[-–]/)[0].trim(),
+      });
+      const r = await fetch(`/api/prices?${params}`);
+      const data = await r.json();
+      if (data.count > 0) setLivePrice(data);
+    } catch (e) {
+      // silent fail — price is non-critical
+    } finally {
+      setPriceFetching(false);
+    }
+  };
+
   const callAPI = async (messages) => {
     const res = await fetch("/api/identify", {
       method: "POST",
@@ -337,10 +459,9 @@ Pregunta si se cumple CUALQUIERA de estas condiciones:
 2. La diferencia entre el 1er y 2do candidato es menor de 30 puntos.
 3. No puedes distinguir el trim/generación específico sin más info.
 4. Tu confianza total es menor a ${CONFIDENCE_THRESHOLD}%.
-En duda: SIEMPRE pregunta. Una pregunta buena es mejor que una respuesta incorrecta.
 
 ══ CUÁNDO DAR RESULTADO DIRECTO (type:"result") ══
-Solo cuando el candidato principal tiene ≥ ${CONFIDENCE_THRESHOLD}% de confianza Y los demás candidatos tienen ≤ 10% cada uno Y ves la insignia/badge claramente.
+Solo cuando el candidato principal tiene ≥ ${CONFIDENCE_THRESHOLD}% de confianza Y los demás candidatos tienen ≤ 10% cada uno.
 
 ══ SCHEMA RESULT ══
 {
@@ -351,65 +472,86 @@ Solo cuando el candidato principal tiene ≥ ${CONFIDENCE_THRESHOLD}% de confian
     "make":"Marca",
     "model":"Modelo completo",
     "year":"Año o rango (ej: 1999-2002)",
-    "trim":"Versión exacta (Si/Type R/GTI/V-Spec) o null",
-    "chassis_code":"Código chasis (R34/E46/EK9) o null si no aplica",
-    "generation":"Texto generacional (ej: Cuarta generación / F30)",
-    "body_style":"Carrocería y puertas (ej: Coupé 2 puertas)",
-    "engine_displacement":"Cilindrada (ej: 2.6L / 2,600 cc)",
-    "engine_config":"Configuración (ej: I6 / V8 / Flat-6)",
+    "trim":"Versión exacta o null",
+    "chassis_code":"Código chasis o null",
+    "generation":"Texto generacional",
+    "body_style":"Carrocería y puertas",
+    "engine_displacement":"Cilindrada",
+    "engine_config":"Configuración motor",
     "aspiration":"NA / Turbo / Twin-Turbo / Supercargado / Híbrido / Eléctrico",
-    "engine_code":"Código oficial motor (RB26DETT / 2JZ-GTE / K20A) o null",
-    "horsepower":"HP y RPM si se conoce (ej: 280 hp @ 6800 rpm)",
-    "torque":"Nm y RPM (ej: 392 Nm @ 4400 rpm)",
-    "redline":"Redline en RPM (ej: 8000 rpm) o null",
-    "zero_to_100":"0-100 km/h (ej: 4.9 s)",
-    "top_speed":"Velocidad máxima (ej: 250 km/h limitada)",
-    "transmission":"Tipo y velocidades (ej: Manual 6 velocidades / DCT 7v)",
-    "drivetrain":"FWD / RWD / AWD / 4WD con sistema si aplica",
-    "weight":"Peso en vacío (ej: 1,560 kg)",
-    "power_to_weight":"Relación potencia/peso (ej: 179 hp/t)",
-    "fuel_economy":"Consumo mixto (ej: 10 L/100km)",
-    "engine_code_full":"Decodificación del código de motor letra por letra, null si no aplica",
-    "production_years":"Años de producción del modelo/generación",
-    "length":"Largo en mm",
-    "width":"Ancho en mm",
-    "height":"Alto en mm",
-    "wheelbase":"Distancia entre ejes en mm",
-    "factory_colors":"Colores de fábrica separados por coma (máx 6)",
-    "paint_code":"Código de pintura más icónico del modelo",
-    "oem_wheels":"Specs rines OEM: diámetro×ancho ETxx PCD (ej: 17×7 ET45 5×114.3)",
-    "oem_tires":"Medidas neumáticos OEM, escalonado si aplica",
-    "msrp_original":"Precio original con moneda y año (ej: ~$24,000 USD 2003)",
+    "engine_code":"Código motor oficial o null",
+    "horsepower":"HP y RPM (ej: 280 hp @ 6800 rpm)",
+    "torque":"Nm y RPM",
+    "redline":"RPM o null",
+    "zero_to_100":"0-100 km/h",
+    "top_speed":"Velocidad máxima",
+    "transmission":"Tipo y velocidades",
+    "drivetrain":"FWD / RWD / AWD / 4WD",
+    "weight":"Peso en vacío",
+    "power_to_weight":"Relación potencia/peso",
+    "fuel_economy":"Consumo mixto",
+    "engine_code_full":"Decodificación letra por letra o null",
+    "production_years":"Años de producción",
+    "length":"Largo en mm (solo número)",
+    "width":"Ancho en mm (solo número)",
+    "height":"Alto en mm (solo número)",
+    "wheelbase":"Entre ejes en mm (solo número)",
+    "factory_colors":"Colores de fábrica (máx 6)",
+    "paint_code":"Código de pintura icónico",
+    "oem_wheels":"Specs rines OEM",
+    "oem_tires":"Medidas neumáticos OEM",
+    "msrp_original":"Precio original con moneda y año",
     "market_value":"Valor de mercado actual estimado",
-    "known_issues":"Problemas conocidos por año-modelo, máx 2 frases",
-    "mod_potential":"Potencial de modificación y techo de poder típico",
-    "production_total":"Total producidos (ej: ~11,578 unidades)",
-    "special_editions":"Ediciones especiales o de homologación, null si no hay",
-    "fun_fact":"Un dato específico y verificable: homologación, récord exacto, Easter egg concreto, decodificación del código. NUNCA frases genéricas como 'apareció en varios videojuegos'. Máx 2 frases.",
-    "movie_appearances":"Películas/series/videojuegos con nombre específico (ej: Gran Turismo, Need for Speed: Most Wanted 2005). Si lo mencionas en fun_fact, DEBES incluirlo aquí. null si ninguno conocido.",
-    "celebrity_connection":"Piloto o celebridad específica con relación verificable. null si ninguna.",
-    "naming_origin":"Origen o significado del nombre/código, null si no hay dato interesante",
+    "known_issues":"Problemas conocidos, máx 2 frases",
+    "mod_potential":"Potencial de modificación",
+    "production_total":"Total producidos",
+    "special_editions":"Ediciones especiales o null",
+    "fun_fact":"Dato específico y verificable, máx 2 frases. NUNCA genérico.",
+    "movie_appearances":"Películas/series/juegos con nombre específico o null",
+    "celebrity_connection":"Piloto o celebridad verificable o null",
+    "naming_origin":"Origen del nombre o null",
     "mexico_status":"Nacional / Importado-regularizable / Chocolate común / Raro en México / Clásico-coleccionable",
-    "libro_azul_estimate":"Para coches comunes: estimación MXN condición Bueno. Para clásicos/coleccionables (>30 años o >$50k USD): 'No aplica — clásico coleccionable.'",
-    "holograma":"Holograma CDMX: vehículos >30 años = EXENTO. Año 2000+ aplica 00/0/1/2 según verificación.",
-    "tenencia_note":"Nota sobre tenencia por estado (CDMX, Jalisco, Edomex, etc.)",
-    "refacciones":"Disponibilidad en México: Excelente / Buena / Limitada / Difícil",
-    "depreciation_mx":"Depreciación o apreciación esperada en mercado mexicano"
+    "libro_azul_estimate":"Estimación MXN condición Bueno. Para clásicos +30 años o >$50k USD: 'No aplica — clásico coleccionable.'",
+    "holograma":"Holograma CDMX: +30 años = EXENTO. 2000+ aplica 00/0/1/2.",
+    "tenencia_note":"Nota tenencia por estado",
+    "refacciones":"Excelente / Buena / Limitada / Difícil",
+    "depreciation_mx":"Depreciación o apreciación en mercado MX",
+    "rarity_score":<1-10 rareza en México: 1=ubicuo, 10=unicornio>,
+    "rarity_label":"Común / Poco común / Raro / Muy raro / Unicornio en México",
+    "units_in_mx":"Estimación de unidades circulando (ej: '~45,000', '<500', 'Desconocido')"
   }
 }
+
+══ RAREZA EN MÉXICO — CALIBRACIÓN ══
+Calibra rarity_score con estos referentes reales:
+- Score 1-2: Nissan Tsuru/Versa, VW Jetta A4, Chevy Corsa — >100,000 unidades
+- Score 3-4: Honda Civic, Mazda 3, VW Golf, Ford Focus — 20,000-100,000
+- Score 4-5: Subaru Impreza, Honda Accord, Nissan Altima — 5,000-20,000
+- Score 5-6: Subaru WRX/STI, Nissan 370Z, VW Golf R/GTI — 1,000-5,000
+- Score 7-8: Nissan GT-R R35, Porsche 911, BMW M3/M5 — 200-1,000
+- Score 8-9: Ferrari 488, Lamborghini Huracán, McLaren — 50-200
+- Score 9-10: Bugatti, Koenigsegg, ediciones únicas, prototipos — <50
+
+══ REGLAS DE PRECISIÓN ══
+1. PRODUCCIÓN TOTAL: solo unidades del modelo exacto identificado. M3 ≠ BMW 3 Series.
+2. AÑOS DE PRODUCCIÓN: de la variante específica, no del chasis base.
+3. DIMENSIONES: solo el número en mm, sin escribir "mm".
+4. fun_fact: nunca "apareció en varios videojuegos". Nombra cuáles específicamente.
+5. Si fun_fact menciona película → incluirla en movie_appearances.
 
 ══ SCHEMA QUESTION ══
 {
   "type":"question",
   "candidates":[{"name":"...","prob":58},{"name":"...","prob":35}],
-  "question":"Pregunta concreta que distinga visualmente los candidatos",
+  "question":"Pregunta concreta",
   "options":["Opción A","Opción B"],
   "reason":"Por qué esta pregunta diferencia los candidatos"
 }${known}`;
   };
 
   const startAnalysis = async (b64, mediaType) => {
-    setStage("analyzing"); setErrorMsg(""); setFromCommunity(false); setSavedToGarage(false);
+    setStage("analyzing"); setErrorMsg(""); setFromCommunity(false);
+    setSavedToGarage(false); setLivePrice(null);
     bumpScan();
     const messages = [{
       role: "user",
@@ -433,6 +575,7 @@ Solo cuando el candidato principal tiene ≥ ${CONFIDENCE_THRESHOLD}% de confian
       setResult(parsed.car);
       setFromCommunity(!!parsed.fromCommunity);
       setStage("result");
+      fetchPrice(parsed.car);
     } else if (parsed.type === "question") {
       setCandidates(parsed.candidates || []);
       setQuestion(parsed);
@@ -467,6 +610,7 @@ Solo cuando el candidato principal tiene ≥ ${CONFIDENCE_THRESHOLD}% de confian
     setStage("idle"); setImageData(null); setCandidates([]);
     setQuestion(null); setResult(null); setHistory([]);
     setErrorMsg(""); setFromCommunity(false); setSavedToGarage(false);
+    setLivePrice(null); setPriceFetching(false);
     if (fileRef.current) fileRef.current.value = "";
   };
 
@@ -545,10 +689,7 @@ Solo cuando el candidato principal tiene ≥ ${CONFIDENCE_THRESHOLD}% de confian
           <img src={imageData} alt="coche" style={{ width: "100%", display: "block", maxHeight: 220, objectFit: "cover" }} />
         </div>
       )}
-
       <div style={{ background: C.surface, borderRadius: r.xl, border: `1px solid ${C.border}`, overflow: "hidden" }}>
-
-        {/* Status */}
         <div style={{ padding: "10px 20px", borderBottom: `1px solid ${C.border}`, background: fromCommunity ? "#FFF9F0" : "#F8F8F8", display: "flex", alignItems: "center", gap: 6 }}>
           <span style={{ color: fromCommunity ? C.orange : C.muted }}>
             {fromCommunity ? <IconStar /> : <IconCheck size={12} />}
@@ -557,10 +698,7 @@ Solo cuando el candidato principal tiene ≥ ${CONFIDENCE_THRESHOLD}% de confian
             {fromCommunity ? "Reconocido al instante" : "Identificado"}
           </span>
         </div>
-
-        <CarSheet d={result} />
-
-        {/* CTAs */}
+        <CarSheet d={result} livePrice={livePrice} priceFetching={priceFetching} />
         <div style={{ padding: "16px 20px 20px", borderTop: `1px solid ${C.border}`, display: "flex", flexDirection: "column", gap: 10 }}>
           {savedToGarage ? (
             <div style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 8, background: "#F0FFF4", borderRadius: r.lg, padding: "13px", border: `1px solid ${C.green}` }}>
@@ -599,12 +737,9 @@ Solo cuando el candidato principal tiene ≥ ${CONFIDENCE_THRESHOLD}% de confian
     const profile = buildProfile(db);
     return (
       <div>
-        {/* Perfil */}
         {profile && (
           <div style={{ background: C.surface, borderRadius: r.xl, border: `1px solid ${C.border}`, padding: "16px 20px", marginBottom: 16 }}>
-            <p style={{ fontSize: 11, fontWeight: 600, letterSpacing: "0.07em", textTransform: "uppercase", color: C.muted, margin: "0 0 10px" }}>
-              Tu perfil
-            </p>
+            <p style={{ fontSize: 11, fontWeight: 600, letterSpacing: "0.07em", textTransform: "uppercase", color: C.muted, margin: "0 0 10px" }}>Tu perfil</p>
             <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
               {profile.map((tag, i) => (
                 <span key={i} style={{ background: C.primary, color: "#fff", borderRadius: r.pill, padding: "4px 12px", fontSize: 12, fontWeight: 600 }}>
@@ -617,7 +752,6 @@ Solo cuando el candidato principal tiene ≥ ${CONFIDENCE_THRESHOLD}% de confian
             </p>
           </div>
         )}
-
         {db.length === 0 ? (
           <div style={{ background: C.surface, borderRadius: r.xl, border: `1px solid ${C.border}`, padding: "56px 24px", textAlign: "center" }}>
             <div style={{ color: C.border, marginBottom: 12 }}><IconCar size={36} /></div>
@@ -626,34 +760,45 @@ Solo cuando el candidato principal tiene ≥ ${CONFIDENCE_THRESHOLD}% de confian
           </div>
         ) : (
           <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-            {db.map(d => (
-              <button
-                key={d.id}
-                onClick={() => { setSelectedCar(d); setView("car-detail"); }}
-                style={{ background: C.surface, border: `1px solid ${C.border}`, borderRadius: r.lg, padding: "14px 16px", display: "flex", justifyContent: "space-between", alignItems: "center", cursor: "pointer", textAlign: "left", fontFamily: font, width: "100%" }}
-                onMouseEnter={e => e.currentTarget.style.background = C.accent}
-                onMouseLeave={e => e.currentTarget.style.background = C.surface}
-              >
-                <div style={{ flex: 1, minWidth: 0 }}>
-                  <p style={{ fontSize: 15, fontWeight: 600, color: C.fg, margin: "0 0 3px" }}>{d.make} {d.model}</p>
-                  <p style={{ fontSize: 12, color: C.muted, margin: 0 }}>
-                    <span>{val(d.chassis_code) !== "—" ? val(d.chassis_code) : val(d.generation)}</span>
-                    {" · "}
-                    <span>{val(d.year)}</span>
-                    {" · "}
-                    <span>{val(d.horsepower)}</span>
-                  </p>
-                </div>
-                <div style={{ display: "flex", alignItems: "center", gap: 10, flexShrink: 0, marginLeft: 12 }}>
-                  {d.confirmations > 1 && (
-                    <span style={{ background: C.accent, borderRadius: r.pill, padding: "4px 10px", fontSize: 12, fontWeight: 600, color: C.muted }}>
-                      ×{d.confirmations}
-                    </span>
-                  )}
-                  <span style={{ color: C.border, fontSize: 18 }}>›</span>
-                </div>
-              </button>
-            ))}
+            {db.map(d => {
+              const rc = getRarityColor(d.rarity_score);
+              return (
+                <button
+                  key={d.id}
+                  onClick={() => {
+                    setSelectedCar(d);
+                    setLivePrice(null);
+                    setView("car-detail");
+                    fetchPrice(d);
+                  }}
+                  style={{ background: C.surface, border: `1px solid ${C.border}`, borderRadius: r.lg, padding: "14px 16px", display: "flex", justifyContent: "space-between", alignItems: "center", cursor: "pointer", textAlign: "left", fontFamily: font, width: "100%" }}
+                  onMouseEnter={e => e.currentTarget.style.background = C.accent}
+                  onMouseLeave={e => e.currentTarget.style.background = C.surface}
+                >
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <p style={{ fontSize: 15, fontWeight: 600, color: C.fg, margin: "0 0 3px" }}>{d.make} {d.model}</p>
+                    <p style={{ fontSize: 12, color: C.muted, margin: 0 }}>
+                      {val(d.chassis_code) !== "—" ? val(d.chassis_code) : val(d.generation)}
+                      {" · "}{val(d.year)}
+                      {" · "}{val(d.horsepower)}
+                    </p>
+                  </div>
+                  <div style={{ display: "flex", alignItems: "center", gap: 8, flexShrink: 0, marginLeft: 12 }}>
+                    {d.rarity_score > 0 && (
+                      <span style={{ fontSize: 11, fontWeight: 700, color: rc, background: rc + "18", borderRadius: r.pill, padding: "2px 8px" }}>
+                        {getRarityLabel(d.rarity_score)}
+                      </span>
+                    )}
+                    {d.confirmations > 1 && (
+                      <span style={{ background: C.accent, borderRadius: r.pill, padding: "3px 8px", fontSize: 12, fontWeight: 600, color: C.muted }}>
+                        ×{d.confirmations}
+                      </span>
+                    )}
+                    <span style={{ color: C.border, fontSize: 18 }}>›</span>
+                  </div>
+                </button>
+              );
+            })}
           </div>
         )}
       </div>
@@ -670,14 +815,12 @@ Solo cuando el candidato principal tiene ≥ ${CONFIDENCE_THRESHOLD}% de confian
         >
           <IconBack /> Garage
         </button>
-        <CarSheet d={selectedCar} />
+        <CarSheet d={selectedCar} livePrice={livePrice} priceFetching={priceFetching} />
       </div>
     );
   };
 
   // ── Shell ─────────────────────────────────────────────────────
-  const garageLabel = view === "car-detail" ? `‹ ${selectedCar?.make || "Garage"}` : `Garage (${db.length})`;
-
   return (
     <div style={{ minHeight: "100dvh", background: C.bg, fontFamily: font, letterSpacing: "-0.01em", WebkitFontSmoothing: "antialiased" }}>
       <div style={{
