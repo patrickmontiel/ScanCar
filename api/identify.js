@@ -3,6 +3,14 @@ export const config = {
 };
 
 export default async function handler(req, res) {
+  // Endpoint temporal de diagnóstico
+  if (req.method === "GET") {
+    const envKeys = Object.keys(process.env).filter(k =>
+      k.toLowerCase().includes("openai") || k.toLowerCase().includes("api_key")
+    );
+    return res.status(200).json({ envKeys, nodeEnv: process.env.NODE_ENV });
+  }
+
   if (req.method !== "POST") {
     return res.status(405).json({ error: "Method not allowed" });
   }
