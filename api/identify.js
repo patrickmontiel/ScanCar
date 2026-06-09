@@ -2,6 +2,10 @@
 // Llama a OpenAI GPT-4o mini (visión) y devuelve respuesta
 // en formato Anthropic-compatible para que el frontend no cambie.
 
+export const config = {
+  api: { bodyParser: { sizeLimit: "20mb" } },
+};
+
 export default async function handler(req, res) {
   if (req.method !== "POST") {
     return res.status(405).json({ error: "Method not allowed" });
