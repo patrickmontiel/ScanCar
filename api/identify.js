@@ -1,7 +1,3 @@
-// api/identify.js — Vercel serverless function.
-// Llama a OpenAI GPT-4o mini (visión) y devuelve respuesta
-// en formato Anthropic-compatible para que el frontend no cambie.
-
 export const config = {
   api: { bodyParser: { sizeLimit: "20mb" } },
 };
@@ -10,14 +6,18 @@ export default async function handler(req, res) {
   if (req.method !== "POST") {
     return res.status(405).json({ error: "Method not allowed" });
   }
+
   const key = process.env.OPENAI_API_KEY;
+  console.log("KEY present:", !!key, "| length:", key?.length, "| starts:", key?.substring(0, 10));
+
   if (!key) {
     return res.status(500).json({ error: "Falta OPENAI_API_KEY en variables de entorno" });
   }
+
   try {
     const { messages } = req.body;
+    console.log("Messages count:", messages?.length, "| body ok:", !!req.body);
 
-    // Traducir mensajes del formato Anthropic al formato OpenAI
     const openaiMessages = messages.map((msg) => ({
       role: msg.role,
       content: Array.isArray(msg.content)
@@ -33,14 +33,14 @@ export default async function handler(req, res) {
             }
             return { type: "text", text: block.text };
           })
-        : msg.content, // string (mensajes de seguimiento)
+        : msg.content,
     }));
 
     const r = await fetch("https://api.openai.com/v1/chat/completions", {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
-        Authorization: `Bearer ${key}`,
+        Authorization: `Bearer ${key.trim()}`,
       },
       body: JSON.stringify({
         model: "gpt-4o-mini",
@@ -49,19 +49,27 @@ export default async function handler(req, res) {
       }),
     });
 
-    const data = await r.json();
+    console.log("OpenAI HTTP status:", r.status);
 
-    if (data.error) {
-      console.error("OpenAI error:", JSON.stringify(data.error));
-      return res.status(500).json({ error: data.error.message });
+    const rawText = await r.text();
+    console.log("OpenAI response (first 300):", rawText.substring(0, 300));
+
+    let data;
+    try {
+      data = JSON.parse(rawText);
+    } catch (parseErr) {
+      return res.status(500).json({ error: `OpenAI devolvió respuesta no-JSON (HTTP ${r.status}): ${rawText.substring(0, 150)}` });
+    }
+
+    if (!r.ok || data.error) {
+      const msg = data.error?.message || `OpenAI HTTP ${r.status}`;
+      console.error("OpenAI error:", msg);
+      return res.status(500).json({ error: msg });
     }
 
     const text = data.choices?.[0]?.message?.content ?? "";
+    return res.status(200).json({ content: [{ type: "text", text }] });
 
-    // Devolver en formato Anthropic para que el frontend no cambie
-    return res.status(200).json({
-      content: [{ type: "text", text }],
-    });
   } catch (e) {
     console.error("Handler exception:", String(e));
     return res.status(500).json({ error: String(e) });
