@@ -1,4 +1,5 @@
 import React, { useState, useRef, useEffect } from "react";
+import MapView from "./MapView";
 
 const CONFIDENCE_THRESHOLD = 90;
 const DB_KEY = "carnoceur-confirmados-v1";
@@ -38,6 +39,24 @@ const IconCar = ({ size = 32 }) => (
 const IconBack = () => (
   <svg width="18" height="18" viewBox="0 0 18 18" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
     <polyline points="11,4 6,9 11,14"/>
+  </svg>
+);
+const IconScanTab = () => (
+  <svg width="22" height="22" viewBox="0 0 22 22" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round">
+    <path d="M7 3H5a2 2 0 0 0-2 2v2M17 3h2a2 2 0 0 1 2 2v2M7 19H5a2 2 0 0 1-2-2v-2M17 19h2a2 2 0 0 0 2-2v-2"/>
+    <circle cx="11" cy="11" r="3.5"/>
+  </svg>
+);
+const IconGarageTab = () => (
+  <svg width="22" height="22" viewBox="0 0 22 22" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round">
+    <path d="M5 9.5l2.5-5h7l2.5 5"/><rect x="2" y="9.5" width="18" height="8" rx="2"/>
+    <circle cx="7" cy="17.5" r="2"/><circle cx="15" cy="17.5" r="2"/>
+  </svg>
+);
+const IconMapTab = () => (
+  <svg width="22" height="22" viewBox="0 0 22 22" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round">
+    <path d="M11 2C8.24 2 6 4.24 6 7c0 5 5 13 5 13s5-8 5-13c0-2.76-2.24-5-5-5z"/>
+    <circle cx="11" cy="7" r="2"/>
   </svg>
 );
 
@@ -404,6 +423,7 @@ export default function CarScanner() {
   const [scanCount, setScanCount] = useState(0);
   const [livePrice, setLivePrice] = useState(null);
   const [priceFetching, setPriceFetching] = useState(false);
+  const [sightingStatus, setSightingStatus] = useState(null);
   const fileRef = useRef(null);
 
   useEffect(() => {
@@ -646,11 +666,37 @@ Calibra rarity_score con estos referentes reales:
     startAnalysis(b64, mediaType);
   };
 
+  const logSighting = async () => {
+    if (!result) return;
+    setSightingStatus("loading");
+    try {
+      const pos = await new Promise((resolve, reject) =>
+        navigator.geolocation.getCurrentPosition(resolve, reject, { timeout: 10000 })
+      );
+      const { latitude: lat, longitude: lng } = pos.coords;
+      await fetch("/api/sightings", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          car_make: result.make, car_model: result.model,
+          car_year: result.year, rarity_score: result.rarity_score,
+          rarity_label: result.rarity_label, chassis_code: result.chassis_code,
+          trim: result.trim, lat, lng,
+        }),
+      });
+      setSightingStatus("done");
+      setTimeout(() => setSightingStatus(null), 2500);
+    } catch (e) {
+      setSightingStatus("error");
+      setTimeout(() => setSightingStatus(null), 2500);
+    }
+  };
+
   const reset = () => {
     setStage("idle"); setImageData(null); setCandidates([]);
     setQuestion(null); setResult(null); setHistory([]);
     setErrorMsg(""); setFromCommunity(false); setSavedToGarage(false);
-    setLivePrice(null); setPriceFetching(false);
+    setLivePrice(null); setPriceFetching(false); setSightingStatus(null);
     if (fileRef.current) fileRef.current.value = "";
   };
 
@@ -745,9 +791,22 @@ Calibra rarity_score con estos referentes reales:
               Agregar a Garage
             </button>
           )}
+          {sightingStatus === "done" ? (
+            <div style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 8, background: "#FFF9F0", borderRadius: r.lg, padding: "12px", border: `1px solid ${C.orange}` }}>
+              <span style={{ fontSize: 15, fontWeight: 600, color: C.orange }}>📍 Avistamiento en el mapa</span>
+            </div>
+          ) : (
+            <button
+              onClick={logSighting}
+              disabled={sightingStatus === "loading"}
+              style={{ width: "100%", background: "transparent", color: sightingStatus === "loading" ? C.muted : C.fg, border: `1.5px solid ${C.border}`, borderRadius: r.lg, padding: "12px", fontSize: 14, fontWeight: 500, cursor: sightingStatus === "loading" ? "default" : "pointer", fontFamily: font }}
+            >
+              {sightingStatus === "loading" ? "Obteniendo ubicación…" : sightingStatus === "error" ? "Sin permiso de ubicación" : "📍 Registrar avistamiento"}
+            </button>
+          )}
           <button
             onClick={reset}
-            style={{ width: "100%", background: "transparent", color: C.muted, border: `1px solid ${C.border}`, borderRadius: r.lg, padding: "12px", fontSize: 14, fontWeight: 500, cursor: "pointer", fontFamily: font }}
+            style={{ width: "100%", background: "transparent", color: C.muted, border: "none", borderRadius: r.lg, padding: "10px", fontSize: 13, fontWeight: 400, cursor: "pointer", fontFamily: font }}
           >
             Escanear otro
           </button>
@@ -853,8 +912,16 @@ Calibra rarity_score con estos referentes reales:
   };
 
   // ── Shell ─────────────────────────────────────────────────────
+  const tabs = [
+    { id: "scan", label: "Escanear", Icon: IconScanTab },
+    { id: "gallery", label: "Garage", Icon: IconGarageTab },
+    { id: "map", label: "Mapa", Icon: IconMapTab },
+  ];
+  const activeTab = view === "car-detail" ? "gallery" : view;
+
   return (
     <div style={{ minHeight: "100dvh", background: C.bg, fontFamily: font, letterSpacing: "-0.01em", WebkitFontSmoothing: "antialiased" }}>
+      {/* Header */}
       <div style={{
         position: "sticky", top: 0, zIndex: 10,
         background: "rgba(255,255,255,0.85)",
@@ -863,30 +930,13 @@ Calibra rarity_score con estos referentes reales:
         padding: "env(safe-area-inset-top, 0px) 0 0",
       }}>
         <div style={{ maxWidth: 480, margin: "0 auto", padding: "14px 20px" }}>
-          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-            <div>
-              <h1 style={{ fontSize: 22, fontWeight: 700, color: C.fg, margin: 0, lineHeight: 1 }}>ScanCar</h1>
-              <p style={{ fontSize: 12, color: C.muted, margin: "3px 0 0" }}>{scanCount} escaneos · {db.length} guardados</p>
-            </div>
-            <div style={{ display: "flex", gap: 8 }}>
-              <button
-                onClick={() => { reset(); setView("scan"); }}
-                style={{ background: view === "scan" ? C.primary : "transparent", color: view === "scan" ? "#fff" : C.muted, border: view === "scan" ? "none" : `1px solid ${C.border}`, borderRadius: r.pill, padding: "7px 14px", fontSize: 13, fontWeight: 500, cursor: "pointer", fontFamily: font }}
-              >
-                Escanear
-              </button>
-              <button
-                onClick={() => { setSelectedCar(null); setView("gallery"); }}
-                style={{ background: (view === "gallery" || view === "car-detail") ? C.primary : "transparent", color: (view === "gallery" || view === "car-detail") ? "#fff" : C.muted, border: (view === "gallery" || view === "car-detail") ? "none" : `1px solid ${C.border}`, borderRadius: r.pill, padding: "7px 14px", fontSize: 13, fontWeight: 500, cursor: "pointer", fontFamily: font }}
-              >
-                Garage
-              </button>
-            </div>
-          </div>
+          <h1 style={{ fontSize: 22, fontWeight: 700, color: C.fg, margin: 0, lineHeight: 1 }}>ScanCar</h1>
+          <p style={{ fontSize: 12, color: C.muted, margin: "3px 0 0" }}>{scanCount} escaneos · {db.length} guardados</p>
         </div>
       </div>
 
-      <div style={{ maxWidth: 480, margin: "0 auto", padding: "20px 20px calc(40px + env(safe-area-inset-bottom, 0px))" }}>
+      {/* Content */}
+      <div style={{ maxWidth: 480, margin: "0 auto", padding: "20px 20px calc(80px + env(safe-area-inset-bottom, 0px))" }}>
         {view === "scan" && (
           <>
             {stage === "idle" && renderScanArea()}
@@ -898,6 +948,42 @@ Calibra rarity_score con estos referentes reales:
         )}
         {view === "gallery" && renderGallery()}
         {view === "car-detail" && renderCarDetail()}
+        {view === "map" && <MapView />}
+      </div>
+
+      {/* Bottom navigation */}
+      <div style={{
+        position: "fixed", bottom: 0, left: 0, right: 0, zIndex: 20,
+        background: "rgba(255,255,255,0.92)",
+        backdropFilter: "blur(20px)", WebkitBackdropFilter: "blur(20px)",
+        borderTop: `1px solid ${C.border}`,
+        display: "flex",
+        paddingBottom: "env(safe-area-inset-bottom, 0px)",
+      }}>
+        {tabs.map(({ id, label, Icon }) => {
+          const active = activeTab === id;
+          return (
+            <button
+              key={id}
+              onClick={() => {
+                if (id === "scan") { reset(); setView("scan"); }
+                else if (id === "gallery") { setSelectedCar(null); setView("gallery"); }
+                else setView(id);
+              }}
+              style={{
+                flex: 1, display: "flex", flexDirection: "column", alignItems: "center",
+                gap: 3, padding: "10px 0 8px",
+                background: "transparent", border: "none",
+                color: active ? C.primary : C.muted,
+                cursor: "pointer", fontFamily: font,
+                transition: "color 0.15s",
+              }}
+            >
+              <Icon />
+              <span style={{ fontSize: 10, fontWeight: active ? 600 : 400 }}>{label}</span>
+            </button>
+          );
+        })}
       </div>
 
       <style>{`
