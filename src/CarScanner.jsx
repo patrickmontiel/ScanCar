@@ -407,6 +407,7 @@ export default function CarScanner() {
       return next;
     });
     setSavedToGarage(true);
+    setTimeout(() => reset(), 1800);
   };
 
   const fetchPrice = async (car) => {
@@ -457,8 +458,16 @@ NUNCA adivines cuando hay ambigüedad. Una identificación incorrecta es peor qu
 Pregunta si se cumple CUALQUIERA de estas condiciones:
 1. Hay 2 o más candidatos con probabilidad ≥ 20%.
 2. La diferencia entre el 1er y 2do candidato es menor de 30 puntos.
-3. No puedes distinguir el trim/generación específico sin más info.
-4. Tu confianza total es menor a ${CONFIDENCE_THRESHOLD}%.
+3. Tu confianza total es menor a ${CONFIDENCE_THRESHOLD}%.
+
+REGLAS DE LAS PREGUNTAS — CRÍTICO:
+• Pregunta SOLO sobre características VISIBLES en la foto: forma de faros, rejillas, spoiler, techo, diseño de rines, logotipo, calipers, líneas de carrocería.
+• SIEMPRE añade "No lo sé" como última opción.
+• NUNCA preguntes por generaciones, años, códigos de chasis o datos técnicos que el usuario deba memorizar.
+• MAL: "¿Es de primera o tercera generación?" → BIEN: "¿Las luces traseras forman una franja continua o son separadas?"
+• MAL: "¿Tiene chasis E46 o E90?" → BIEN: "¿Los faros delanteros son redondos o angulares y alargados?"
+• MAL: "¿Qué año es?" → BIEN: "¿El logotipo del frente tiene bordes cromados o es completamente negro?"
+• Máximo 4 opciones incluyendo "No lo sé".
 
 ══ CUÁNDO DAR RESULTADO DIRECTO (type:"result") ══
 Solo cuando el candidato principal tiene ≥ ${CONFIDENCE_THRESHOLD}% de confianza Y los demás candidatos tienen ≤ 10% cada uno.
@@ -543,8 +552,8 @@ Calibra rarity_score con estos referentes reales:
 {
   "type":"question",
   "candidates":[{"name":"...","prob":58},{"name":"...","prob":35}],
-  "question":"Pregunta concreta",
-  "options":["Opción A","Opción B"],
+  "question":"Pregunta visual concreta (lo que se VE en la foto)",
+  "options":["Opción A visual","Opción B visual","No lo sé"],
   "reason":"Por qué esta pregunta diferencia los candidatos"
 }${known}`;
   };
@@ -690,14 +699,6 @@ Calibra rarity_score con estos referentes reales:
         </div>
       )}
       <div style={{ background: C.surface, borderRadius: r.xl, border: `1px solid ${C.border}`, overflow: "hidden" }}>
-        <div style={{ padding: "10px 20px", borderBottom: `1px solid ${C.border}`, background: fromCommunity ? "#FFF9F0" : "#F8F8F8", display: "flex", alignItems: "center", gap: 6 }}>
-          <span style={{ color: fromCommunity ? C.orange : C.muted }}>
-            {fromCommunity ? <IconStar /> : <IconCheck size={12} />}
-          </span>
-          <span style={{ fontSize: 12, fontWeight: 600, color: fromCommunity ? C.orange : C.muted }}>
-            {fromCommunity ? "Reconocido al instante" : "Identificado"}
-          </span>
-        </div>
         <CarSheet d={result} livePrice={livePrice} priceFetching={priceFetching} />
         <div style={{ padding: "16px 20px 20px", borderTop: `1px solid ${C.border}`, display: "flex", flexDirection: "column", gap: 10 }}>
           {savedToGarage ? (
@@ -838,7 +839,7 @@ Calibra rarity_score con estos referentes reales:
             </div>
             <div style={{ display: "flex", gap: 8 }}>
               <button
-                onClick={() => setView("scan")}
+                onClick={() => { reset(); setView("scan"); }}
                 style={{ background: view === "scan" ? C.primary : "transparent", color: view === "scan" ? "#fff" : C.muted, border: view === "scan" ? "none" : `1px solid ${C.border}`, borderRadius: r.pill, padding: "7px 14px", fontSize: 13, fontWeight: 500, cursor: "pointer", fontFamily: font }}
               >
                 Escanear
