@@ -116,27 +116,28 @@ export default function CarScanner() {
     } catch (e) {}
   }, []);
 
-  const persist = (next) => {
-    setDb(next);
-    try { localStorage.setItem(DB_KEY, JSON.stringify(next)); } catch (e) {}
-  };
-
   const bumpScan = () => {
-    const n = scanCount + 1;
-    setScanCount(n);
-    try { localStorage.setItem(DB_KEY + "-count", String(n)); } catch (e) {}
+    setScanCount(n => {
+      const next = n + 1;
+      try { localStorage.setItem(DB_KEY + "-count", String(next)); } catch (e) {}
+      return next;
+    });
   };
 
   const saveToDb = (car) => {
-    const idx = db.findIndex(d => d.make === car.make && d.model === car.model && d.generation === car.generation);
-    let next;
-    if (idx >= 0) {
-      next = [...db];
-      next[idx] = { ...next[idx], confirmations: next[idx].confirmations + 1 };
-    } else {
-      next = [{ id: Date.now(), ...car, confirmations: 1 }, ...db];
-    }
-    persist(next);
+    if (!car) return;
+    setDb(prev => {
+      const idx = prev.findIndex(d => d.make === car.make && d.model === car.model && d.generation === car.generation);
+      let next;
+      if (idx >= 0) {
+        next = [...prev];
+        next[idx] = { ...next[idx], confirmations: next[idx].confirmations + 1 };
+      } else {
+        next = [{ id: Date.now(), ...car, confirmations: 1 }, ...prev];
+      }
+      try { localStorage.setItem(DB_KEY, JSON.stringify(next)); } catch (e) {}
+      return next;
+    });
   };
 
   const callAPI = async (messages) => {
