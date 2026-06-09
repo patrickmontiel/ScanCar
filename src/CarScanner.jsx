@@ -12,7 +12,7 @@ const C = {
 const font = "-apple-system, BlinkMacSystemFont, 'SF Pro Display', 'Segoe UI', system-ui, sans-serif";
 const r = { sm: 10, md: 12, lg: 16, xl: 20, pill: 100 };
 
-// ── Micro-componentes ───────────────────────────────────────────
+// ── Icons ───────────────────────────────────────────────────────
 const IconCamera = () => (
   <svg width="28" height="24" viewBox="0 0 28 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
     <path d="M9 3L7 7H3a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h22a2 2 0 0 0 2-2V9a2 2 0 0 0-2-2h-4L19 3H9Z"/>
@@ -33,6 +33,11 @@ const IconCar = ({ size = 32 }) => (
   <svg width={size} height={size} viewBox="0 0 32 32" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
     <path d="M8 14l3-7h10l3 7"/><rect x="3" y="14" width="26" height="10" rx="3"/>
     <circle cx="9" cy="24" r="3"/><circle cx="23" cy="24" r="3"/><line x1="12" y1="24" x2="20" y2="24"/>
+  </svg>
+);
+const IconBack = () => (
+  <svg width="18" height="18" viewBox="0 0 18 18" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+    <polyline points="11,4 6,9 11,14"/>
   </svg>
 );
 
@@ -56,8 +61,84 @@ const Tag = ({ children, dark = false }) => (
   </span>
 );
 
-// ── Helpers de render ───────────────────────────────────────────
-// Siempre muestra todos los campos. "—" si el valor es null/vacío.
+// ── Image resize (performance: shrink before sending to API) ────
+const resizeImage = (file) => new Promise(resolve => {
+  const MAX = 1024;
+  const img = new Image();
+  const url = URL.createObjectURL(file);
+  img.onload = () => {
+    let { width: w, height: h } = img;
+    if (w > MAX || h > MAX) {
+      if (w > h) { h = Math.round(h * MAX / w); w = MAX; }
+      else { w = Math.round(w * MAX / h); h = MAX; }
+    }
+    const canvas = document.createElement("canvas");
+    canvas.width = w; canvas.height = h;
+    canvas.getContext("2d").drawImage(img, 0, 0, w, h);
+    URL.revokeObjectURL(url);
+    canvas.toBlob(blob => {
+      const reader = new FileReader();
+      reader.onload = () => {
+        const dataUrl = reader.result;
+        resolve({ dataUrl, mediaType: "image/jpeg", b64: dataUrl.split(",")[1] });
+      };
+      reader.readAsDataURL(blob);
+    }, "image/jpeg", 0.85);
+  };
+  img.src = url;
+});
+
+// ── Profile builder ─────────────────────────────────────────────
+const buildProfile = (cars) => {
+  if (cars.length < 2) return null;
+  const tags = [];
+
+  const makes = cars.map(c => (c.make || "").toLowerCase());
+  const jpMakes = ["toyota", "honda", "nissan", "mazda", "subaru", "mitsubishi", "lexus", "acura", "infiniti", "datsun"];
+  const deMakes = ["bmw", "mercedes", "audi", "volkswagen", "porsche", "opel"];
+  const itMakes = ["ferrari", "lamborghini", "alfa romeo", "maserati", "fiat", "lancia"];
+  const jpCount = makes.filter(m => jpMakes.some(j => m.includes(j))).length;
+  const deCount = makes.filter(m => deMakes.some(g => m.includes(g))).length;
+  const itCount = makes.filter(m => itMakes.some(g => m.includes(g))).length;
+  const max = Math.max(jpCount, deCount, itCount);
+  if (max > 0) {
+    if (max === jpCount) tags.push("Afinidad japonesa");
+    else if (max === deCount) tags.push("Afinidad alemana");
+    else tags.push("Afinidad italiana");
+  }
+
+  const asps = cars.map(c => (c.aspiration || "").toLowerCase());
+  const turbos = asps.filter(a => a.includes("turbo")).length;
+  const nas = asps.filter(a => a === "na" || a.startsWith("na ") || a.includes("atmosférico")).length;
+  if (turbos > nas && turbos > 0) tags.push("Amante del turbo");
+  else if (nas > turbos && nas > 0) tags.push("Purista NA");
+
+  const dts = cars.map(c => (c.drivetrain || "").toUpperCase());
+  const rwd = dts.filter(d => d.includes("RWD")).length;
+  const awd = dts.filter(d => d.includes("AWD") || d.includes("4WD")).length;
+  const fwd = dts.filter(d => d.includes("FWD")).length;
+  const maxDt = Math.max(rwd, awd, fwd);
+  if (maxDt > 0) {
+    if (maxDt === rwd) tags.push("Tracción trasera");
+    else if (maxDt === awd) tags.push("AWD / 4WD");
+    else tags.push("Tracción delantera");
+  }
+
+  const hps = cars.map(c => {
+    const m = String(c.horsepower || "").match(/(\d+)/);
+    return m ? parseInt(m[1]) : 0;
+  }).filter(n => n > 0);
+  if (hps.length > 0) {
+    const avg = hps.reduce((a, b) => a + b, 0) / hps.length;
+    if (avg >= 400) tags.push("Potencia extrema");
+    else if (avg >= 250) tags.push("Alto rendimiento");
+    else if (avg >= 130) tags.push("Rendimiento moderado");
+  }
+
+  return tags.length > 0 ? tags : null;
+};
+
+// ── Data helpers ─────────────────────────────────────────────────
 const val = (v) =>
   (v != null && v !== "" && String(v).toLowerCase() !== "null") ? v : "—";
 
@@ -69,28 +150,111 @@ const renderRows = (fields) =>
       borderBottom: i < arr.length - 1 ? `1px solid ${C.border}` : "none",
     }}>
       <span style={{ fontSize: 13, color: C.muted, flexShrink: 0, paddingRight: 16, minWidth: "38%" }}>{label}</span>
-      <span style={{
-        fontSize: 13, fontWeight: 500, textAlign: "right", flex: 1,
-        color: val(value) === "—" ? C.border : C.fg,
-      }}>
+      <span style={{ fontSize: 13, fontWeight: 500, textAlign: "right", flex: 1, color: val(value) === "—" ? C.border : C.fg }}>
         {val(value)}
       </span>
     </div>
   ));
 
-// Siempre renderiza la sección, aunque todos los valores sean "—".
 const Section = ({ title, fields, accentColor }) => (
   <div style={{ borderTop: `1px solid ${C.border}` }}>
-    <div style={{
-      fontSize: 11, fontWeight: 600, letterSpacing: "0.07em",
-      textTransform: "uppercase", color: accentColor || C.muted,
-      padding: "14px 20px 6px",
-    }}>
+    <div style={{ fontSize: 11, fontWeight: 600, letterSpacing: "0.07em", textTransform: "uppercase", color: accentColor || C.muted, padding: "14px 20px 6px" }}>
       {title}
     </div>
     {renderRows(fields)}
   </div>
 );
+
+// ── Full car sheet (reutilizable para resultado y detalle de garage) ──
+function CarSheet({ d, imageUrl }) {
+  const stripMm = (v) => v ? String(v).replace(/\s*mm\s*$/i, "").trim() : v;
+  const addMm = (v) => {
+    if (!v || String(v).toLowerCase() === "null") return v;
+    return String(v).toLowerCase().includes("mm") ? v : v + " mm";
+  };
+  const hasVal = (v) => v != null && v !== "" && String(v).toLowerCase() !== "null";
+  const dims = [d.length, d.width, d.height].every(hasVal)
+    ? `${stripMm(d.length)} × ${stripMm(d.width)} × ${stripMm(d.height)} mm` : null;
+
+  return (
+    <div style={{ background: C.surface, borderRadius: r.xl, border: `1px solid ${C.border}`, overflow: "hidden" }}>
+      {imageUrl && <img src={imageUrl} alt="coche" style={{ width: "100%", display: "block", maxHeight: 220, objectFit: "cover" }} />}
+
+      <div style={{ padding: "20px 20px 16px" }}>
+        <p style={{ fontSize: 28, fontWeight: 700, color: C.fg, margin: "0 0 10px", lineHeight: 1.1 }}>
+          {d.make} {d.model}
+        </p>
+        <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+          {d.year && <Tag>{d.year}</Tag>}
+          {d.chassis_code && String(d.chassis_code).toLowerCase() !== "null" && <Tag dark>{d.chassis_code}</Tag>}
+          {d.trim && String(d.trim).toLowerCase() !== "null" && <Tag>{d.trim}</Tag>}
+          {d.generation && !d.chassis_code && <Tag>{d.generation}</Tag>}
+        </div>
+        {d.body_style && String(d.body_style).toLowerCase() !== "null" && (
+          <p style={{ fontSize: 13, color: C.muted, margin: "10px 0 0" }}>{d.body_style}</p>
+        )}
+      </div>
+
+      <Section title="Motor y potencia" fields={[
+        ["Código de motor", d.engine_code], ["Decodificación", d.engine_code_full],
+        ["Cilindrada", d.engine_displacement], ["Configuración", d.engine_config],
+        ["Aspiración", d.aspiration], ["Potencia", d.horsepower],
+        ["Torque", d.torque], ["Redline", d.redline],
+      ]} />
+      <Section title="Rendimiento" fields={[
+        ["0 – 100 km/h", d.zero_to_100], ["Velocidad máxima", d.top_speed],
+        ["Transmisión", d.transmission], ["Tracción", d.drivetrain],
+        ["Potencia / Peso", d.power_to_weight],
+      ]} />
+      <Section title="Medidas y consumo" fields={[
+        ["Peso en vacío", d.weight], ["Consumo mixto", d.fuel_economy],
+        ["Largo × Ancho × Alto", dims], ["Distancia entre ejes", addMm(d.wheelbase)],
+      ]} />
+      <Section title="De fábrica" fields={[
+        ["Años de producción", d.production_years], ["Total producidos", d.production_total],
+        ["Ediciones especiales", d.special_editions], ["Colores originales", d.factory_colors],
+        ["Código de pintura", d.paint_code], ["Rines OEM", d.oem_wheels],
+        ["Neumáticos OEM", d.oem_tires],
+      ]} />
+      <Section title="Valor" fields={[
+        ["MSRP original", d.msrp_original], ["Valor de mercado", d.market_value],
+      ]} />
+      <Section title="Fiabilidad y potencial" fields={[
+        ["Problemas conocidos", d.known_issues], ["Potencial de mod", d.mod_potential],
+      ]} />
+
+      <div style={{ borderTop: `1px solid ${C.border}`, padding: "16px 20px" }}>
+        <div style={{ fontSize: 11, fontWeight: 600, letterSpacing: "0.07em", textTransform: "uppercase", color: C.muted, marginBottom: 10 }}>
+          Dato de fan
+        </div>
+        {d.fun_fact && String(d.fun_fact).toLowerCase() !== "null" ? (
+          <div style={{ background: C.accent, borderRadius: r.md, padding: "14px 16px" }}>
+            <p style={{ fontSize: 14, lineHeight: 1.55, color: C.fg, margin: 0 }}>{d.fun_fact}</p>
+          </div>
+        ) : <span style={{ fontSize: 13, color: C.border }}>—</span>}
+      </div>
+
+      <Section title="Cultura" fields={[
+        ["Películas / series", d.movie_appearances], ["Celebridades", d.celebrity_connection],
+        ["Origen del nombre", d.naming_origin],
+      ]} />
+
+      <div style={{ borderTop: `1px solid ${C.border}` }}>
+        <div style={{ fontSize: 11, fontWeight: 600, letterSpacing: "0.07em", textTransform: "uppercase", color: C.mxGreen, padding: "14px 20px 6px" }}>
+          Mercado México 🇲🇽
+        </div>
+        {renderRows([
+          ["Estatus", d.mexico_status], ["Valor Libro Azul", d.libro_azul_estimate],
+          ["Holograma CDMX", d.holograma], ["Tenencia", d.tenencia_note],
+          ["Refacciones", d.refacciones], ["Depreciación MX", d.depreciation_mx],
+        ])}
+        <p style={{ fontSize: 11, color: C.muted, padding: "8px 20px 14px", margin: 0 }}>
+          * Estimaciones. Consulta Libro Azul oficial y SEDEMA para valores exactos.
+        </p>
+      </div>
+    </div>
+  );
+}
 
 // ── Componente principal ────────────────────────────────────────
 export default function CarScanner() {
@@ -103,7 +267,9 @@ export default function CarScanner() {
   const [errorMsg, setErrorMsg] = useState("");
   const [db, setDb] = useState([]);
   const [fromCommunity, setFromCommunity] = useState(false);
+  const [savedToGarage, setSavedToGarage] = useState(false);
   const [view, setView] = useState("scan");
+  const [selectedCar, setSelectedCar] = useState(null);
   const [scanCount, setScanCount] = useState(0);
   const fileRef = useRef(null);
 
@@ -138,6 +304,7 @@ export default function CarScanner() {
       try { localStorage.setItem(DB_KEY, JSON.stringify(next)); } catch (e) {}
       return next;
     });
+    setSavedToGarage(true);
   };
 
   const callAPI = async (messages) => {
@@ -220,53 +387,16 @@ Solo cuando el candidato principal tiene ≥ ${CONFIDENCE_THRESHOLD}% de confian
     "special_editions":"Ediciones especiales o de homologación, null si no hay",
     "fun_fact":"Un dato específico y verificable: homologación, récord exacto, Easter egg concreto, decodificación del código. NUNCA frases genéricas como 'apareció en varios videojuegos'. Máx 2 frases.",
     "movie_appearances":"Películas/series/videojuegos con nombre específico (ej: Gran Turismo, Need for Speed: Most Wanted 2005). Si lo mencionas en fun_fact, DEBES incluirlo aquí. null si ninguno conocido.",
-    "celebrity_connection":"Piloto o celebridad específica con relación verificable (ej: Roberto Ravaglia — edición especial homologación DTM 1989). Si lo mencionas en fun_fact, DEBES incluirlo aquí. null si ninguna.",
+    "celebrity_connection":"Piloto o celebridad específica con relación verificable. null si ninguna.",
     "naming_origin":"Origen o significado del nombre/código, null si no hay dato interesante",
     "mexico_status":"Nacional / Importado-regularizable / Chocolate común / Raro en México / Clásico-coleccionable",
-    "libro_azul_estimate":"Para coches comunes: estimación MXN condición Bueno. Para clásicos/coleccionables (>30 años o >$50k USD): escribe 'No aplica — clásico coleccionable. Valor real de mercado en campo market_value.'",
-    "holograma":"Holograma CDMX: vehículos >30 años califican como EXENTO (antiguo). Año 2000+ aplica 00/0/1/2 según verificación. Incluye razón breve.",
+    "libro_azul_estimate":"Para coches comunes: estimación MXN condición Bueno. Para clásicos/coleccionables (>30 años o >$50k USD): 'No aplica — clásico coleccionable.'",
+    "holograma":"Holograma CDMX: vehículos >30 años = EXENTO. Año 2000+ aplica 00/0/1/2 según verificación.",
     "tenencia_note":"Nota sobre tenencia por estado (CDMX, Jalisco, Edomex, etc.)",
     "refacciones":"Disponibilidad en México: Excelente / Buena / Limitada / Difícil",
     "depreciation_mx":"Depreciación o apreciación esperada en mercado mexicano"
   }
 }
-
-══ REGLAS DE PRECISIÓN — ERRORES CRÍTICOS A EVITAR ══
-1. PRODUCCIÓN TOTAL: reporta SOLO las unidades del modelo exacto identificado.
-   MAL: E30 M3 → "~150,000 unidades" (esas son del E30 regular).
-   BIEN: E30 M3 → "~17,970 unidades".
-   Regla: variantes M, AMG, Type R, RS, Nismo tienen producción MUCHO menor que el modelo base.
-
-2. AÑOS DE PRODUCCIÓN: usa los años de la variante específica, no del chasis base.
-   MAL: E30 M3 → "1982-1994" (esos son del E30 base).
-   BIEN: E30 M3 → "1986-1991".
-
-3. DIMENSIONES: escribe SOLO el número, sin la unidad "mm". El campo la añade solo.
-   MAL: "4,350 mm". BIEN: "4,350".
-   Regla: width/height/length/wheelbase = número puro en mm.
-
-4. DIMENSIONES VARIANTES M/AMG/RS: usa las medidas de LA VARIANTE, no del base.
-   El E30 M3 mide 1,765 mm de ancho (ensanchamientos), no 1,645 mm del E30 base.
-
-5. CÓDIGO DE PINTURA: incluye el código alfanumérico oficial, NO el nombre del color.
-   MAL: "Schwarz". BIEN: "086 (Schwarz)" o "300 (Alpinweiß)".
-
-6. NEUMÁTICOS: usa las medidas del modelo específico, no del base.
-   E30 M3 = 205/55R15, no 195/60R15 (esas son del E30 normal).
-
-7. MSRP: usa el precio real de lanzamiento de la variante, no una estimación del año del chasis base.
-   E30 M3 se lanzó en EE.UU. en 1988 a ~$35,000-38,000 USD.
-
-8. CONSISTENCIA fun_fact ↔ campos:
-   Si mencionas una película en fun_fact → DEBES incluirla en movie_appearances.
-   Si mencionas una celebridad en fun_fact → DEBES incluirla en celebrity_connection.
-   Si fun_fact menciona "varios videojuegos" → NOMBRA cuáles en movie_appearances.
-
-9. fun_fact NUNCA GENÉRICO: no escribas "apareció en varios videojuegos y películas".
-   Escribe el dato específico: qué juego, qué película, qué récord exacto, qué año, qué número.
-
-10. COLECCIONABLES vs LIBRO AZUL: coches +30 años o valor >$50,000 USD son coleccionables.
-    Para esos: libro_azul_estimate = "No aplica — clásico coleccionable." y holograma = "EXENTO — vehículo antiguo (+30 años en CDMX)".
 
 ══ SCHEMA QUESTION ══
 {
@@ -279,7 +409,7 @@ Solo cuando el candidato principal tiene ≥ ${CONFIDENCE_THRESHOLD}% de confian
   };
 
   const startAnalysis = async (b64, mediaType) => {
-    setStage("analyzing"); setErrorMsg(""); setFromCommunity(false);
+    setStage("analyzing"); setErrorMsg(""); setFromCommunity(false); setSavedToGarage(false);
     bumpScan();
     const messages = [{
       role: "user",
@@ -302,7 +432,6 @@ Solo cuando el candidato principal tiene ≥ ${CONFIDENCE_THRESHOLD}% de confian
     if (parsed.type === "result") {
       setResult(parsed.car);
       setFromCommunity(!!parsed.fromCommunity);
-      saveToDb(parsed.car);
       setStage("result");
     } else if (parsed.type === "question") {
       setCandidates(parsed.candidates || []);
@@ -326,26 +455,22 @@ Solo cuando el candidato principal tiene ≥ ${CONFIDENCE_THRESHOLD}% de confian
     }
   };
 
-  const onFile = (e) => {
+  const onFile = async (e) => {
     const file = e.target.files?.[0];
     if (!file) return;
-    const reader = new FileReader();
-    reader.onload = () => {
-      const full = reader.result;
-      setImageData(full);
-      startAnalysis(full.split(",")[1], file.type);
-    };
-    reader.readAsDataURL(file);
+    const { dataUrl, mediaType, b64 } = await resizeImage(file);
+    setImageData(dataUrl);
+    startAnalysis(b64, mediaType);
   };
 
   const reset = () => {
     setStage("idle"); setImageData(null); setCandidates([]);
     setQuestion(null); setResult(null); setHistory([]);
-    setErrorMsg(""); setFromCommunity(false);
+    setErrorMsg(""); setFromCommunity(false); setSavedToGarage(false);
     if (fileRef.current) fileRef.current.value = "";
   };
 
-  // ── Views ───────────────────────────────────────────────────
+  // ── Views ────────────────────────────────────────────────────
 
   const renderScanArea = () => (
     <label style={{ display: "block", cursor: "pointer" }}>
@@ -413,156 +538,53 @@ Solo cuando el candidato principal tiene ≥ ${CONFIDENCE_THRESHOLD}% de confian
     </div>
   );
 
-  const renderResult = () => {
-    const d = result;
-    // Quita "mm" si el modelo ya lo incluyó en el valor, para evitar "4,350 mm mm"
-    const stripMm = (v) => v ? String(v).replace(/\s*mm\s*$/i, "").trim() : v;
-    const addMm = (v) => {
-      if (!v || String(v).toLowerCase() === "null") return v;
-      return String(v).toLowerCase().includes("mm") ? v : v + " mm";
-    };
-    const hasVal = (v) => v != null && v !== "" && String(v).toLowerCase() !== "null";
-    const dims = [d.length, d.width, d.height].every(hasVal)
-      ? `${stripMm(d.length)} × ${stripMm(d.width)} × ${stripMm(d.height)} mm`
-      : null;
+  const renderResult = () => (
+    <div>
+      {imageData && (
+        <div style={{ borderRadius: r.xl, overflow: "hidden", marginBottom: 12, border: `1px solid ${C.border}` }}>
+          <img src={imageData} alt="coche" style={{ width: "100%", display: "block", maxHeight: 220, objectFit: "cover" }} />
+        </div>
+      )}
 
-    return (
-      <div>
-        {imageData && (
-          <div style={{ borderRadius: r.xl, overflow: "hidden", marginBottom: 12, border: `1px solid ${C.border}` }}>
-            <img src={imageData} alt="coche" style={{ width: "100%", display: "block", maxHeight: 220, objectFit: "cover" }} />
-          </div>
-        )}
+      <div style={{ background: C.surface, borderRadius: r.xl, border: `1px solid ${C.border}`, overflow: "hidden" }}>
 
-        <div style={{ background: C.surface, borderRadius: r.xl, border: `1px solid ${C.border}`, overflow: "hidden" }}>
+        {/* Status */}
+        <div style={{ padding: "10px 20px", borderBottom: `1px solid ${C.border}`, background: fromCommunity ? "#FFF9F0" : "#F8F8F8", display: "flex", alignItems: "center", gap: 6 }}>
+          <span style={{ color: fromCommunity ? C.orange : C.muted }}>
+            {fromCommunity ? <IconStar /> : <IconCheck size={12} />}
+          </span>
+          <span style={{ fontSize: 12, fontWeight: 600, color: fromCommunity ? C.orange : C.muted }}>
+            {fromCommunity ? "Reconocido al instante" : "Identificado"}
+          </span>
+        </div>
 
-          {/* Status */}
-          <div style={{ padding: "10px 20px", borderBottom: `1px solid ${C.border}`, background: fromCommunity ? "#FFF9F0" : "#F0FFF4", display: "flex", alignItems: "center", gap: 6 }}>
-            <span style={{ color: fromCommunity ? C.orange : C.green }}>
-              {fromCommunity ? <IconStar /> : <IconCheck size={12} />}
-            </span>
-            <span style={{ fontSize: 12, fontWeight: 600, color: fromCommunity ? C.orange : C.green }}>
-              {fromCommunity ? "Reconocido al instante" : "Identificado · guardado"}
-            </span>
-          </div>
+        <CarSheet d={result} />
 
-          {/* Identity hero */}
-          <div style={{ padding: "20px 20px 16px" }}>
-            <p style={{ fontSize: 28, fontWeight: 700, color: C.fg, margin: "0 0 10px", lineHeight: 1.1 }}>
-              {d.make} {d.model}
-            </p>
-            <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
-              {d.year && <Tag>{d.year}</Tag>}
-              {d.chassis_code && String(d.chassis_code).toLowerCase() !== "null" && <Tag dark>{d.chassis_code}</Tag>}
-              {d.trim && String(d.trim).toLowerCase() !== "null" && <Tag>{d.trim}</Tag>}
-              {d.generation && !d.chassis_code && <Tag>{d.generation}</Tag>}
+        {/* CTAs */}
+        <div style={{ padding: "16px 20px 20px", borderTop: `1px solid ${C.border}`, display: "flex", flexDirection: "column", gap: 10 }}>
+          {savedToGarage ? (
+            <div style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 8, background: "#F0FFF4", borderRadius: r.lg, padding: "13px", border: `1px solid ${C.green}` }}>
+              <span style={{ color: C.green }}><IconCheck size={14} /></span>
+              <span style={{ fontSize: 15, fontWeight: 600, color: C.green }}>Guardado en tu Garage</span>
             </div>
-            {d.body_style && String(d.body_style).toLowerCase() !== "null" && (
-              <p style={{ fontSize: 13, color: C.muted, margin: "10px 0 0" }}>{d.body_style}</p>
-            )}
-          </div>
-
-          {/* Motor */}
-          <Section title="Motor y potencia" fields={[
-            ["Código de motor", d.engine_code],
-            ["Decodificación", d.engine_code_full],
-            ["Cilindrada", d.engine_displacement],
-            ["Configuración", d.engine_config],
-            ["Aspiración", d.aspiration],
-            ["Potencia", d.horsepower],
-            ["Torque", d.torque],
-            ["Redline", d.redline],
-          ]} />
-
-          {/* Rendimiento */}
-          <Section title="Rendimiento" fields={[
-            ["0 – 100 km/h", d.zero_to_100],
-            ["Velocidad máxima", d.top_speed],
-            ["Transmisión", d.transmission],
-            ["Tracción", d.drivetrain],
-            ["Potencia / Peso", d.power_to_weight],
-          ]} />
-
-          {/* Medidas */}
-          <Section title="Medidas y consumo" fields={[
-            ["Peso en vacío", d.weight],
-            ["Consumo mixto", d.fuel_economy],
-            ["Largo × Ancho × Alto", dims],
-            ["Distancia entre ejes", addMm(d.wheelbase)],
-          ]} />
-
-          {/* Fábrica */}
-          <Section title="De fábrica" fields={[
-            ["Años de producción", d.production_years],
-            ["Total producidos", d.production_total],
-            ["Ediciones especiales", d.special_editions],
-            ["Colores originales", d.factory_colors],
-            ["Código de pintura", d.paint_code],
-            ["Rines OEM", d.oem_wheels],
-            ["Neumáticos OEM", d.oem_tires],
-          ]} />
-
-          {/* Valor */}
-          <Section title="Valor" fields={[
-            ["MSRP original", d.msrp_original],
-            ["Valor de mercado", d.market_value],
-          ]} />
-
-          {/* Fiabilidad */}
-          <Section title="Fiabilidad y potencial" fields={[
-            ["Problemas conocidos", d.known_issues],
-            ["Potencial de mod", d.mod_potential],
-          ]} />
-
-          {/* Fun fact — siempre visible */}
-          <div style={{ borderTop: `1px solid ${C.border}`, padding: "16px 20px" }}>
-            <div style={{ fontSize: 11, fontWeight: 600, letterSpacing: "0.07em", textTransform: "uppercase", color: C.muted, marginBottom: 10 }}>
-              Dato de fan
-            </div>
-            {d.fun_fact && String(d.fun_fact).toLowerCase() !== "null" ? (
-              <div style={{ background: C.accent, borderRadius: r.md, padding: "14px 16px" }}>
-                <p style={{ fontSize: 14, lineHeight: 1.55, color: C.fg, margin: 0 }}>{d.fun_fact}</p>
-              </div>
-            ) : (
-              <span style={{ fontSize: 13, color: C.border }}>—</span>
-            )}
-          </div>
-
-          {/* Cultura */}
-          <Section title="Cultura" fields={[
-            ["Películas / series", d.movie_appearances],
-            ["Celebridades", d.celebrity_connection],
-            ["Origen del nombre", d.naming_origin],
-          ]} />
-
-          {/* México — siempre visible */}
-          <div style={{ borderTop: `1px solid ${C.border}` }}>
-            <div style={{ fontSize: 11, fontWeight: 600, letterSpacing: "0.07em", textTransform: "uppercase", color: C.mxGreen, padding: "14px 20px 6px" }}>
-              Mercado México 🇲🇽
-            </div>
-            {renderRows([
-              ["Estatus", d.mexico_status],
-              ["Valor Libro Azul", d.libro_azul_estimate],
-              ["Holograma CDMX", d.holograma],
-              ["Tenencia", d.tenencia_note],
-              ["Refacciones", d.refacciones],
-              ["Depreciación MX", d.depreciation_mx],
-            ])}
-            <p style={{ fontSize: 11, color: C.muted, padding: "8px 20px 14px", margin: 0 }}>
-              * Estimaciones. Consulta Libro Azul oficial y SEDEMA para valores exactos.
-            </p>
-          </div>
-
-          {/* CTA */}
-          <div style={{ padding: "16px 20px 20px", borderTop: `1px solid ${C.border}` }}>
-            <button onClick={reset} style={{ width: "100%", background: C.primary, color: "#fff", border: "none", borderRadius: r.lg, padding: "13px", fontSize: 15, fontWeight: 600, cursor: "pointer", fontFamily: font }}>
-              Escanear otro
+          ) : (
+            <button
+              onClick={() => saveToDb(result)}
+              style={{ width: "100%", background: C.primary, color: "#fff", border: "none", borderRadius: r.lg, padding: "13px", fontSize: 15, fontWeight: 600, cursor: "pointer", fontFamily: font }}
+            >
+              Agregar a Garage
             </button>
-          </div>
+          )}
+          <button
+            onClick={reset}
+            style={{ width: "100%", background: "transparent", color: C.muted, border: `1px solid ${C.border}`, borderRadius: r.lg, padding: "12px", fontSize: 14, fontWeight: 500, cursor: "pointer", fontFamily: font }}
+          >
+            Escanear otro
+          </button>
         </div>
       </div>
-    );
-  };
+    </div>
+  );
 
   const renderError = () => (
     <div style={{ background: C.surface, borderRadius: r.xl, border: `1px solid ${C.border}`, padding: 28, textAlign: "center" }}>
@@ -573,37 +595,89 @@ Solo cuando el candidato principal tiene ≥ ${CONFIDENCE_THRESHOLD}% de confian
     </div>
   );
 
-  const renderGallery = () => (
-    db.length === 0 ? (
-      <div style={{ background: C.surface, borderRadius: r.xl, border: `1px solid ${C.border}`, padding: "56px 24px", textAlign: "center" }}>
-        <div style={{ color: C.border, marginBottom: 12 }}><IconCar size={36} /></div>
-        <p style={{ fontSize: 15, fontWeight: 500, color: C.fg, margin: "0 0 6px" }}>Garage vacío</p>
-        <p style={{ fontSize: 13, color: C.muted, margin: 0 }}>Escanea tu primer coche</p>
-      </div>
-    ) : (
-      <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-        {db.map(d => (
-          <div key={d.id} style={{ background: C.surface, border: `1px solid ${C.border}`, borderRadius: r.lg, padding: "14px 16px", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-            <div style={{ flex: 1, minWidth: 0 }}>
-              <p style={{ fontSize: 15, fontWeight: 600, color: C.fg, margin: "0 0 3px" }}>{d.make} {d.model}</p>
-              <p style={{ fontSize: 12, color: C.muted, margin: 0 }}>
-                <span style={{ color: val(d.chassis_code) === "—" ? C.border : C.muted }}>{val(d.chassis_code)}</span>
-                {" · "}
-                <span>{val(d.year)}</span>
-                {" · "}
-                <span style={{ color: val(d.horsepower) === "—" ? C.border : C.muted }}>{val(d.horsepower)}</span>
-              </p>
+  const renderGallery = () => {
+    const profile = buildProfile(db);
+    return (
+      <div>
+        {/* Perfil */}
+        {profile && (
+          <div style={{ background: C.surface, borderRadius: r.xl, border: `1px solid ${C.border}`, padding: "16px 20px", marginBottom: 16 }}>
+            <p style={{ fontSize: 11, fontWeight: 600, letterSpacing: "0.07em", textTransform: "uppercase", color: C.muted, margin: "0 0 10px" }}>
+              Tu perfil
+            </p>
+            <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
+              {profile.map((tag, i) => (
+                <span key={i} style={{ background: C.primary, color: "#fff", borderRadius: r.pill, padding: "4px 12px", fontSize: 12, fontWeight: 600 }}>
+                  {tag}
+                </span>
+              ))}
             </div>
-            <div style={{ background: C.accent, borderRadius: r.pill, padding: "4px 10px", fontSize: 12, fontWeight: 600, color: C.muted, flexShrink: 0, marginLeft: 12 }}>
-              ×{d.confirmations}
-            </div>
+            <p style={{ fontSize: 11, color: C.muted, margin: "10px 0 0" }}>
+              Basado en {db.length} coche{db.length !== 1 ? "s" : ""} guardado{db.length !== 1 ? "s" : ""}
+            </p>
           </div>
-        ))}
-      </div>
-    )
-  );
+        )}
 
-  // ── Shell ────────────────────────────────────────────────────
+        {db.length === 0 ? (
+          <div style={{ background: C.surface, borderRadius: r.xl, border: `1px solid ${C.border}`, padding: "56px 24px", textAlign: "center" }}>
+            <div style={{ color: C.border, marginBottom: 12 }}><IconCar size={36} /></div>
+            <p style={{ fontSize: 15, fontWeight: 500, color: C.fg, margin: "0 0 6px" }}>Garage vacío</p>
+            <p style={{ fontSize: 13, color: C.muted, margin: 0 }}>Escanea un coche y agrégalo aquí</p>
+          </div>
+        ) : (
+          <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+            {db.map(d => (
+              <button
+                key={d.id}
+                onClick={() => { setSelectedCar(d); setView("car-detail"); }}
+                style={{ background: C.surface, border: `1px solid ${C.border}`, borderRadius: r.lg, padding: "14px 16px", display: "flex", justifyContent: "space-between", alignItems: "center", cursor: "pointer", textAlign: "left", fontFamily: font, width: "100%" }}
+                onMouseEnter={e => e.currentTarget.style.background = C.accent}
+                onMouseLeave={e => e.currentTarget.style.background = C.surface}
+              >
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <p style={{ fontSize: 15, fontWeight: 600, color: C.fg, margin: "0 0 3px" }}>{d.make} {d.model}</p>
+                  <p style={{ fontSize: 12, color: C.muted, margin: 0 }}>
+                    <span>{val(d.chassis_code) !== "—" ? val(d.chassis_code) : val(d.generation)}</span>
+                    {" · "}
+                    <span>{val(d.year)}</span>
+                    {" · "}
+                    <span>{val(d.horsepower)}</span>
+                  </p>
+                </div>
+                <div style={{ display: "flex", alignItems: "center", gap: 10, flexShrink: 0, marginLeft: 12 }}>
+                  {d.confirmations > 1 && (
+                    <span style={{ background: C.accent, borderRadius: r.pill, padding: "4px 10px", fontSize: 12, fontWeight: 600, color: C.muted }}>
+                      ×{d.confirmations}
+                    </span>
+                  )}
+                  <span style={{ color: C.border, fontSize: 18 }}>›</span>
+                </div>
+              </button>
+            ))}
+          </div>
+        )}
+      </div>
+    );
+  };
+
+  const renderCarDetail = () => {
+    if (!selectedCar) return null;
+    return (
+      <div>
+        <button
+          onClick={() => { setSelectedCar(null); setView("gallery"); }}
+          style={{ display: "flex", alignItems: "center", gap: 6, background: "transparent", border: "none", color: C.blue, fontSize: 15, fontWeight: 500, cursor: "pointer", fontFamily: font, padding: "0 0 16px 0" }}
+        >
+          <IconBack /> Garage
+        </button>
+        <CarSheet d={selectedCar} />
+      </div>
+    );
+  };
+
+  // ── Shell ─────────────────────────────────────────────────────
+  const garageLabel = view === "car-detail" ? `‹ ${selectedCar?.make || "Garage"}` : `Garage (${db.length})`;
+
   return (
     <div style={{ minHeight: "100dvh", background: C.bg, fontFamily: font, letterSpacing: "-0.01em", WebkitFontSmoothing: "antialiased" }}>
       <div style={{
@@ -620,11 +694,17 @@ Solo cuando el candidato principal tiene ≥ ${CONFIDENCE_THRESHOLD}% de confian
               <p style={{ fontSize: 12, color: C.muted, margin: "3px 0 0" }}>{scanCount} escaneos · {db.length} guardados</p>
             </div>
             <div style={{ display: "flex", gap: 8 }}>
-              <button onClick={() => setView("scan")} style={{ background: view === "scan" ? C.primary : "transparent", color: view === "scan" ? "#fff" : C.muted, border: view === "scan" ? "none" : `1px solid ${C.border}`, borderRadius: r.pill, padding: "7px 14px", fontSize: 13, fontWeight: 500, cursor: "pointer", fontFamily: font }}>
+              <button
+                onClick={() => setView("scan")}
+                style={{ background: view === "scan" ? C.primary : "transparent", color: view === "scan" ? "#fff" : C.muted, border: view === "scan" ? "none" : `1px solid ${C.border}`, borderRadius: r.pill, padding: "7px 14px", fontSize: 13, fontWeight: 500, cursor: "pointer", fontFamily: font }}
+              >
                 Escanear
               </button>
-              <button onClick={() => setView("gallery")} style={{ background: view === "gallery" ? C.primary : "transparent", color: view === "gallery" ? "#fff" : C.muted, border: view === "gallery" ? "none" : `1px solid ${C.border}`, borderRadius: r.pill, padding: "7px 14px", fontSize: 13, fontWeight: 500, cursor: "pointer", fontFamily: font }}>
-                Garage ({db.length})
+              <button
+                onClick={() => { setSelectedCar(null); setView("gallery"); }}
+                style={{ background: (view === "gallery" || view === "car-detail") ? C.primary : "transparent", color: (view === "gallery" || view === "car-detail") ? "#fff" : C.muted, border: (view === "gallery" || view === "car-detail") ? "none" : `1px solid ${C.border}`, borderRadius: r.pill, padding: "7px 14px", fontSize: 13, fontWeight: 500, cursor: "pointer", fontFamily: font }}
+              >
+                Garage
               </button>
             </div>
           </div>
@@ -642,6 +722,7 @@ Solo cuando el candidato principal tiene ≥ ${CONFIDENCE_THRESHOLD}% de confian
           </>
         )}
         {view === "gallery" && renderGallery()}
+        {view === "car-detail" && renderCarDetail()}
       </div>
 
       <style>{`
