@@ -184,6 +184,27 @@ const Section = ({ title, fields, accentColor }) => (
   </div>
 );
 
+// ── Field formatters ─────────────────────────────────────────────
+const addUnit = (v, suffix) => {
+  if (!v || String(v).toLowerCase() === "null" || String(v).trim() === "") return v;
+  const s = String(v).trim();
+  if (/[a-zA-ZáéíóúÁÉÍÓÚ%/]/.test(s)) return s;
+  const n = parseFloat(s.replace(/,/g, ""));
+  return isNaN(n) ? s : n.toLocaleString("es-MX") + suffix;
+};
+const fmtKg = (v) => {
+  if (!v || String(v).toLowerCase() === "null") return v;
+  const s = String(v).trim();
+  if (/[a-zA-Z]/.test(s)) return s;
+  const n = parseInt(s.replace(/,/g, ""), 10);
+  return isNaN(n) ? s : n.toLocaleString("es-MX") + " kg";
+};
+const cleanList = (v) => {
+  if (!v || String(v).toLowerCase() === "null") return null;
+  const out = String(v).split(",").map(s => s.trim()).filter(s => s.toLowerCase() !== "null" && s !== "").join(", ");
+  return out || null;
+};
+
 // ── Car sheet ────────────────────────────────────────────────────
 function CarSheet({ d, imageUrl, livePrice, priceFetching }) {
   const stripMm = (v) => v ? String(v).replace(/\s*mm\s*$/i, "").trim() : v;
@@ -221,22 +242,28 @@ function CarSheet({ d, imageUrl, livePrice, priceFetching }) {
 
       <Section title="Motor y potencia" fields={[
         ["Código de motor", d.engine_code], ["Decodificación", d.engine_code_full],
-        ["Cilindrada", d.engine_displacement], ["Configuración", d.engine_config],
-        ["Aspiración", d.aspiration], ["Potencia", d.horsepower],
-        ["Torque", d.torque], ["Redline", d.redline],
+        ["Cilindrada", addUnit(d.engine_displacement, "L")],
+        ["Configuración", d.engine_config],
+        ["Aspiración", d.aspiration],
+        ["Potencia", d.horsepower],
+        ["Torque", d.torque],
+        ["Redline", addUnit(d.redline, " rpm")],
       ]} />
       <Section title="Rendimiento" fields={[
-        ["0 – 100 km/h", d.zero_to_100], ["Velocidad máxima", d.top_speed],
+        ["0 – 100 km/h", addUnit(d.zero_to_100, " s")],
+        ["Velocidad máxima", addUnit(d.top_speed, " km/h")],
         ["Transmisión", d.transmission], ["Tracción", d.drivetrain],
         ["Potencia / Peso", d.power_to_weight],
       ]} />
       <Section title="Medidas y consumo" fields={[
-        ["Peso en vacío", d.weight], ["Consumo mixto", d.fuel_economy],
+        ["Peso en vacío", fmtKg(d.weight)],
+        ["Consumo mixto", addUnit(d.fuel_economy, " L/100km")],
         ["Largo × Ancho × Alto", dims], ["Distancia entre ejes", addMm(d.wheelbase)],
       ]} />
       <Section title="De fábrica" fields={[
         ["Años de producción", d.production_years], ["Total producidos", d.production_total],
-        ["Ediciones especiales", d.special_editions], ["Colores originales", d.factory_colors],
+        ["Ediciones especiales", cleanList(d.special_editions)],
+        ["Colores originales", cleanList(d.factory_colors)],
         ["Código de pintura", d.paint_code], ["Rines OEM", d.oem_wheels],
         ["Neumáticos OEM", d.oem_tires],
       ]} />
@@ -260,7 +287,7 @@ function CarSheet({ d, imageUrl, livePrice, priceFetching }) {
       </div>
 
       <Section title="Cultura" fields={[
-        ["Películas / series", d.movie_appearances],
+        ["Películas / series", cleanList(d.movie_appearances)],
         ["Celebridades", d.celebrity_connection],
         ["Origen del nombre", d.naming_origin],
       ]} />
@@ -300,7 +327,11 @@ function CarSheet({ d, imageUrl, livePrice, priceFetching }) {
             </div>
           </>
         ) : (
-          <p style={{ fontSize: 13, color: C.muted, margin: 0 }}>Sin anuncios activos en este momento</p>
+          <p style={{ fontSize: 13, color: C.muted, margin: 0 }}>
+            {Number(d.rarity_score) >= 7
+              ? "Coleccionable · valores en subastas especializadas"
+              : "Sin anuncios activos en este momento"}
+          </p>
         )}
       </div>
 
