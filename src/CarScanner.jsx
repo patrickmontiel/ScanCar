@@ -126,6 +126,30 @@ const getRarityLabel = (score) => {
   return "Común";
 };
 
+// ── Origin classifier ───────────────────────────────────────────
+const getOrigin = (make) => {
+  const m = (make || "").toLowerCase();
+  if (["toyota","honda","nissan","mazda","subaru","mitsubishi","lexus","acura","infiniti","datsun","isuzu","suzuki","scion"].some(b => m.includes(b)))
+    return { label: "Japonés", flag: "🇯🇵", order: 0 };
+  if (["bmw","mercedes","audi","volkswagen","porsche","opel"].some(b => m.includes(b)))
+    return { label: "Alemán", flag: "🇩🇪", order: 1 };
+  if (["ferrari","lamborghini","alfa","maserati","fiat","lancia","pagani"].some(b => m.includes(b)))
+    return { label: "Italiano", flag: "🇮🇹", order: 2 };
+  if (["ford","chevrolet","chevy","dodge","pontiac","buick","cadillac","gmc","jeep","ram","lincoln","tesla","shelby"].some(b => m.includes(b)))
+    return { label: "Americano", flag: "🇺🇸", order: 3 };
+  if (["aston","bentley","rolls","jaguar","land rover","mclaren","lotus","mini","morgan"].some(b => m.includes(b)))
+    return { label: "Inglés", flag: "🇬🇧", order: 4 };
+  if (["peugeot","renault","citro","bugatti","ds automobiles"].some(b => m.includes(b)))
+    return { label: "Francés", flag: "🇫🇷", order: 5 };
+  if (["volvo","koenigsegg","polestar","saab"].some(b => m.includes(b)))
+    return { label: "Sueco", flag: "🇸🇪", order: 6 };
+  if (["hyundai","kia","genesis"].some(b => m.includes(b)))
+    return { label: "Coreano", flag: "🇰🇷", order: 7 };
+  if (["byd","wuling","neta","jaecoo","omoda","gac","baic","chery","haval","great wall","jac","geely","zeekr","nio","leapmotor"].some(b => m.includes(b)) || m === "mg")
+    return { label: "Chino", flag: "🇨🇳", order: 8 };
+  return { label: "Otro", flag: "🌍", order: 9 };
+};
+
 // ── Profile builder ─────────────────────────────────────────────
 const buildProfile = (cars) => {
   if (cars.length < 2) return null;
@@ -966,75 +990,97 @@ Calibración para México:
 
   const renderGallery = () => {
     const profile = buildProfile(db);
+
+    if (db.length === 0) return (
+      <div>
+        <div style={{ background: C.surface, borderRadius: r.xl, border: `1px solid ${C.border}`, padding: "56px 24px", textAlign: "center" }}>
+          <div style={{ color: C.border, marginBottom: 12 }}><IconCar size={36} /></div>
+          <p style={{ fontSize: 15, fontWeight: 500, color: C.fg, margin: "0 0 6px" }}>Garage vacío</p>
+          <p style={{ fontSize: 13, color: C.muted, margin: 0 }}>Escanea un coche y agrégalo aquí</p>
+        </div>
+      </div>
+    );
+
+    // Group by origin
+    const groups = {};
+    db.forEach(d => {
+      const origin = getOrigin(d.make);
+      const key = origin.label;
+      if (!groups[key]) groups[key] = { ...origin, cars: [] };
+      groups[key].cars.push(d);
+    });
+    const sorted = Object.values(groups).sort((a, b) => a.order - b.order);
+
     return (
       <div>
+        {/* Profile card */}
         {profile && (
-          <div style={{ background: C.surface, borderRadius: r.xl, border: `1px solid ${C.border}`, padding: "16px 20px", marginBottom: 16 }}>
+          <div style={{ background: C.surface, borderRadius: r.xl, border: `1px solid ${C.border}`, padding: "16px 20px", marginBottom: 20 }}>
             <p style={{ fontSize: 11, fontWeight: 600, letterSpacing: "0.07em", textTransform: "uppercase", color: C.muted, margin: "0 0 10px" }}>Tu perfil</p>
             <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
               {profile.map((tag, i) => (
-                <span key={i} style={{ background: C.primary, color: "#fff", borderRadius: r.pill, padding: "4px 12px", fontSize: 12, fontWeight: 600 }}>
-                  {tag}
-                </span>
+                <span key={i} style={{ background: C.primary, color: "#fff", borderRadius: r.pill, padding: "4px 12px", fontSize: 12, fontWeight: 600 }}>{tag}</span>
               ))}
             </div>
             <p style={{ fontSize: 11, color: C.muted, margin: "10px 0 0" }}>
-              Basado en {db.length} coche{db.length !== 1 ? "s" : ""} guardado{db.length !== 1 ? "s" : ""}
+              {db.length} coche{db.length !== 1 ? "s" : ""} · {sorted.length} origen{sorted.length !== 1 ? "es" : ""}
             </p>
           </div>
         )}
-        {db.length === 0 ? (
-          <div style={{ background: C.surface, borderRadius: r.xl, border: `1px solid ${C.border}`, padding: "56px 24px", textAlign: "center" }}>
-            <div style={{ color: C.border, marginBottom: 12 }}><IconCar size={36} /></div>
-            <p style={{ fontSize: 15, fontWeight: 500, color: C.fg, margin: "0 0 6px" }}>Garage vacío</p>
-            <p style={{ fontSize: 13, color: C.muted, margin: 0 }}>Escanea un coche y agrégalo aquí</p>
-          </div>
-        ) : (
-          <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-            {db.map(d => {
-              const rc = getRarityColor(d.rarity_score);
-              return (
-                <button
-                  key={d.id}
-                  onClick={() => {
-                    setSelectedCar(d);
-                    setLivePrice(null);
-                    setView("car-detail");
-                    fetchPrice(d);
-                  }}
-                  style={{ background: C.surface, border: `1px solid ${C.border}`, borderRadius: r.lg, padding: "10px 16px 10px 10px", display: "flex", justifyContent: "space-between", alignItems: "center", cursor: "pointer", textAlign: "left", fontFamily: font, width: "100%", gap: 12 }}
-                  onMouseEnter={e => e.currentTarget.style.background = C.accent}
-                  onMouseLeave={e => e.currentTarget.style.background = C.surface}
-                >
-                  {d.photo && (
-                    <img src={d.photo} alt="" style={{ width: 56, height: 56, objectFit: "cover", borderRadius: 8, flexShrink: 0 }} />
-                  )}
-                  <div style={{ flex: 1, minWidth: 0 }}>
-                    <p style={{ fontSize: 15, fontWeight: 600, color: C.fg, margin: "0 0 3px" }}>{d.make} {d.model}</p>
-                    <p style={{ fontSize: 12, color: C.muted, margin: 0 }}>
-                      {val(d.chassis_code) !== "—" ? val(d.chassis_code) : val(d.generation)}
-                      {" · "}{val(d.year)}
-                      {" · "}{val(d.horsepower)}
-                    </p>
-                  </div>
-                  <div style={{ display: "flex", alignItems: "center", gap: 8, flexShrink: 0, marginLeft: 12 }}>
-                    {d.rarity_score > 0 && (
-                      <span style={{ fontSize: 11, fontWeight: 700, color: rc, background: rc + "18", borderRadius: r.pill, padding: "2px 8px" }}>
-                        {getRarityLabel(d.rarity_score)}
-                      </span>
-                    )}
-                    {d.confirmations > 1 && (
-                      <span style={{ background: C.accent, borderRadius: r.pill, padding: "3px 8px", fontSize: 12, fontWeight: 600, color: C.muted }}>
-                        ×{d.confirmations}
-                      </span>
-                    )}
-                    <span style={{ color: C.border, fontSize: 18 }}>›</span>
-                  </div>
-                </button>
-              );
-            })}
-          </div>
-        )}
+
+        {/* Album sections */}
+        <div style={{ display: "flex", flexDirection: "column", gap: 24 }}>
+          {sorted.map(group => (
+            <div key={group.label}>
+              {/* Section header */}
+              <div style={{ display: "flex", alignItems: "baseline", gap: 8, marginBottom: 10, paddingBottom: 8, borderBottom: `1px solid ${C.border}` }}>
+                <span style={{ fontSize: 22 }}>{group.flag}</span>
+                <span style={{ fontSize: 18, fontWeight: 700, color: C.fg, letterSpacing: "-0.02em" }}>{group.label}</span>
+                <span style={{ fontSize: 13, color: C.muted, marginLeft: 2 }}>{group.cars.length}</span>
+              </div>
+
+              {/* Cars in group */}
+              <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+                {group.cars.map(d => {
+                  const rc = getRarityColor(d.rarity_score);
+                  return (
+                    <button
+                      key={d.id}
+                      onClick={() => { setSelectedCar(d); setLivePrice(null); setView("car-detail"); fetchPrice(d); }}
+                      style={{ background: C.surface, border: `1px solid ${C.border}`, borderRadius: r.lg, padding: "10px 14px 10px 10px", display: "flex", alignItems: "center", cursor: "pointer", textAlign: "left", fontFamily: font, width: "100%", gap: 12 }}
+                      onMouseEnter={e => e.currentTarget.style.background = C.accent}
+                      onMouseLeave={e => e.currentTarget.style.background = C.surface}
+                    >
+                      {d.photo ? (
+                        <img src={d.photo} alt="" style={{ width: 54, height: 54, objectFit: "cover", borderRadius: 8, flexShrink: 0 }} />
+                      ) : (
+                        <div style={{ width: 54, height: 54, borderRadius: 8, background: C.accent, flexShrink: 0, display: "flex", alignItems: "center", justifyContent: "center", color: C.border }}>
+                          <IconCar size={22} />
+                        </div>
+                      )}
+                      <div style={{ flex: 1, minWidth: 0 }}>
+                        <p style={{ fontSize: 15, fontWeight: 600, color: C.fg, margin: "0 0 2px", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+                          {d.make} {d.model}
+                        </p>
+                        <p style={{ fontSize: 12, color: C.muted, margin: 0, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+                          {val(d.chassis_code) !== "—" ? val(d.chassis_code) : val(d.generation)}{" · "}{val(d.year)}
+                        </p>
+                      </div>
+                      <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-end", gap: 4, flexShrink: 0 }}>
+                        {d.rarity_score > 0 && (
+                          <span style={{ fontSize: 11, fontWeight: 700, color: rc, background: rc + "15", borderRadius: r.pill, padding: "2px 8px" }}>
+                            {getRarityLabel(d.rarity_score)}
+                          </span>
+                        )}
+                        <span style={{ color: C.border, fontSize: 16 }}>›</span>
+                      </div>
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+          ))}
+        </div>
       </div>
     );
   };

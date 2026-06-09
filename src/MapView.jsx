@@ -36,7 +36,13 @@ const timeAgo = (iso) => {
 
 function InvalidateSize() {
   const map = useMap();
-  useEffect(() => { setTimeout(() => map.invalidateSize(), 150); }, [map]);
+  useEffect(() => {
+    setTimeout(() => {
+      map.invalidateSize();
+      const tilePanes = map.getContainer().querySelectorAll(".leaflet-tile-pane");
+      tilePanes.forEach(el => { el.style.filter = "grayscale(1) brightness(1.08) contrast(0.9)"; });
+    }, 150);
+  }, [map]);
   return null;
 }
 
