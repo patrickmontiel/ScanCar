@@ -36,6 +36,13 @@ export default async function handler(req, res) {
       return res.status(200).json(data);
     }
 
+    if (req.method === "DELETE") {
+      const { id } = req.body;
+      if (!id) return res.status(400).json({ error: "id requerido" });
+      await fetch(`${SUPABASE_URL}/rest/v1/sightings?id=eq.${id}`, { method: "DELETE", headers });
+      return res.status(200).json({ ok: true });
+    }
+
     return res.status(405).json({ error: "Method not allowed" });
   } catch (e) {
     return res.status(500).json({ error: String(e) });

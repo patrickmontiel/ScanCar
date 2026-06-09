@@ -236,28 +236,79 @@ function CarSheet({ d, imageUrl, livePrice, priceFetching }) {
     ? `${stripMm(d.length)} × ${stripMm(d.width)} × ${stripMm(d.height)} mm` : null;
 
   const rarityScore = Number(d.rarity_score) || 0;
-  const rarityColor = getRarityColor(rarityScore);
-  const rarityLabel = d.rarity_label || getRarityLabel(rarityScore);
+  const rColor = getRarityColor(rarityScore);
+  const rLabel = d.rarity_label || getRarityLabel(rarityScore);
+
+  const dnaChips = [
+    d.engine_displacement && hasVal(d.engine_displacement) ? addUnit(d.engine_displacement, "L") : null,
+    d.engine_config && hasVal(d.engine_config) ? d.engine_config : null,
+    d.aspiration && hasVal(d.aspiration) ? d.aspiration : null,
+    d.horsepower && hasVal(d.horsepower) ? d.horsepower.split("@")[0].trim() : null,
+    d.drivetrain && hasVal(d.drivetrain) ? d.drivetrain : null,
+  ].filter(Boolean);
+
+  const heroText = (d.narrative && hasVal(d.narrative)) ? d.narrative
+    : (d.fun_fact && hasVal(d.fun_fact)) ? d.fun_fact : null;
 
   return (
     <div style={{ background: C.surface, borderRadius: r.xl, border: `1px solid ${C.border}`, overflow: "hidden" }}>
-      {imageUrl && <img src={imageUrl} alt="coche" style={{ width: "100%", display: "block", maxHeight: 220, objectFit: "cover" }} />}
+      {imageUrl && <img src={imageUrl} alt="coche" style={{ width: "100%", display: "block", maxHeight: 240, objectFit: "cover" }} />}
 
       {/* Identity */}
-      <div style={{ padding: "20px 20px 16px" }}>
-        <p style={{ fontSize: 28, fontWeight: 700, color: C.fg, margin: "0 0 10px", lineHeight: 1.1 }}>
+      <div style={{ padding: "20px 20px 0" }}>
+        <p style={{ fontSize: 30, fontWeight: 700, color: C.fg, margin: "0 0 10px", lineHeight: 1.1, letterSpacing: "-0.02em" }}>
           {d.make} {d.model}
         </p>
-        <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+        <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginBottom: 8 }}>
           {d.year && <Tag>{d.year}</Tag>}
-          {d.chassis_code && String(d.chassis_code).toLowerCase() !== "null" && <Tag dark>{d.chassis_code}</Tag>}
-          {d.trim && String(d.trim).toLowerCase() !== "null" && <Tag>{d.trim}</Tag>}
+          {d.chassis_code && hasVal(d.chassis_code) && <Tag dark>{d.chassis_code}</Tag>}
+          {d.trim && hasVal(d.trim) && <Tag>{d.trim}</Tag>}
           {d.generation && !d.chassis_code && <Tag>{d.generation}</Tag>}
         </div>
-        {d.body_style && String(d.body_style).toLowerCase() !== "null" && (
-          <p style={{ fontSize: 13, color: C.muted, margin: "10px 0 0" }}>{d.body_style}</p>
+        {d.body_style && hasVal(d.body_style) && (
+          <p style={{ fontSize: 13, color: C.muted, margin: "0 0 14px" }}>{d.body_style}</p>
         )}
       </div>
+
+      {/* DNA chips */}
+      {dnaChips.length > 0 && (
+        <div style={{ padding: "0 20px 16px", display: "flex", flexWrap: "wrap", gap: 6 }}>
+          {dnaChips.map((chip, i) => (
+            <span key={i} style={{ fontSize: 12, fontWeight: 500, color: C.muted, background: C.accent, borderRadius: 6, padding: "4px 10px" }}>
+              {chip}
+            </span>
+          ))}
+        </div>
+      )}
+
+      {/* Narrative / Hero quote */}
+      {heroText && (
+        <div style={{ margin: "0 20px 20px", background: `linear-gradient(135deg, ${rColor}0D, ${rColor}06)`, border: `1px solid ${rColor}25`, borderRadius: 14, padding: "18px 20px 16px", position: "relative" }}>
+          <span style={{ fontSize: 40, lineHeight: 1, color: rColor, opacity: 0.35, position: "absolute", top: 8, left: 16, fontFamily: "Georgia, serif" }}>"</span>
+          <p style={{ fontSize: 14, lineHeight: 1.65, color: C.fg, margin: 0, paddingTop: 16, paddingLeft: 4 }}>{heroText}</p>
+        </div>
+      )}
+
+      {/* Rareza hero */}
+      {rarityScore > 0 && (
+        <div style={{ margin: "0 20px 20px", borderRadius: 14, overflow: "hidden", border: `1px solid ${rColor}30` }}>
+          <div style={{ background: rColor, padding: "12px 16px", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+            <span style={{ fontSize: 13, fontWeight: 700, color: "#fff" }}>Rareza en México</span>
+            <span style={{ fontSize: 20, fontWeight: 800, color: "#fff", letterSpacing: "-0.03em" }}>{rarityScore}/10</span>
+          </div>
+          <div style={{ background: rColor + "10", padding: "10px 16px 12px" }}>
+            <div style={{ height: 6, background: rColor + "25", borderRadius: 3, overflow: "hidden", marginBottom: 8 }}>
+              <div style={{ width: `${rarityScore * 10}%`, height: "100%", background: rColor, borderRadius: 3 }} />
+            </div>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+              <span style={{ fontSize: 13, fontWeight: 700, color: rColor }}>{rLabel}</span>
+              {d.units_in_mx && hasVal(d.units_in_mx) && (
+                <span style={{ fontSize: 11, color: C.muted }}>{d.units_in_mx} en circulación</span>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
 
       <Section title="Motor y potencia" fields={[
         ["Código de motor", d.engine_code], ["Decodificación", d.engine_code_full],
@@ -293,25 +344,44 @@ function CarSheet({ d, imageUrl, livePrice, priceFetching }) {
         ["Problemas conocidos", d.known_issues], ["Potencial de mod", d.mod_potential],
       ]} />
 
-      {/* Dato de fan */}
-      <div style={{ borderTop: `1px solid ${C.border}`, padding: "16px 20px" }}>
-        <div style={{ fontSize: 11, fontWeight: 600, letterSpacing: "0.07em", textTransform: "uppercase", color: C.muted, marginBottom: 10 }}>
-          Dato de fan
-        </div>
-        {d.fun_fact && String(d.fun_fact).toLowerCase() !== "null" ? (
-          <div style={{ background: C.accent, borderRadius: r.md, padding: "14px 16px" }}>
-            <p style={{ fontSize: 14, lineHeight: 1.55, color: C.fg, margin: 0 }}>{d.fun_fact}</p>
+      {/* Legado */}
+      {(hasVal(d.movie_appearances) || hasVal(d.celebrity_connection) || hasVal(d.naming_origin)) && (
+        <div style={{ borderTop: `1px solid ${C.border}`, padding: "16px 20px" }}>
+          <p style={{ fontSize: 11, fontWeight: 600, letterSpacing: "0.07em", textTransform: "uppercase", color: C.muted, margin: "0 0 12px" }}>Legado</p>
+          <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+            {hasVal(d.movie_appearances) && (
+              <div style={{ background: "#1D1D1F", borderRadius: 10, padding: "12px 14px" }}>
+                <p style={{ fontSize: 10, fontWeight: 700, letterSpacing: "0.08em", textTransform: "uppercase", color: "#8E8E93", margin: "0 0 4px" }}>En pantalla</p>
+                <p style={{ fontSize: 13, color: "#fff", margin: 0, lineHeight: 1.5 }}>{cleanList(d.movie_appearances)}</p>
+              </div>
+            )}
+            {hasVal(d.celebrity_connection) && (
+              <div style={{ background: C.accent, borderRadius: 10, padding: "12px 14px" }}>
+                <p style={{ fontSize: 10, fontWeight: 700, letterSpacing: "0.08em", textTransform: "uppercase", color: C.muted, margin: "0 0 4px" }}>Celebridades</p>
+                <p style={{ fontSize: 13, color: C.fg, margin: 0, lineHeight: 1.5 }}>{d.celebrity_connection}</p>
+              </div>
+            )}
+            {hasVal(d.naming_origin) && (
+              <div style={{ background: C.accent, borderRadius: 10, padding: "12px 14px" }}>
+                <p style={{ fontSize: 10, fontWeight: 700, letterSpacing: "0.08em", textTransform: "uppercase", color: C.muted, margin: "0 0 4px" }}>El nombre</p>
+                <p style={{ fontSize: 13, color: C.fg, margin: 0, lineHeight: 1.5 }}>{d.naming_origin}</p>
+              </div>
+            )}
           </div>
-        ) : <span style={{ fontSize: 13, color: C.border }}>—</span>}
-      </div>
+        </div>
+      )}
 
-      <Section title="Cultura" fields={[
-        ["Películas / series", cleanList(d.movie_appearances)],
-        ["Celebridades", d.celebrity_connection],
-        ["Origen del nombre", d.naming_origin],
-      ]} />
+      {/* Fun fact (si es distinto al narrative) */}
+      {hasVal(d.fun_fact) && d.fun_fact !== d.narrative && (
+        <div style={{ borderTop: `1px solid ${C.border}`, padding: "14px 20px" }}>
+          <p style={{ fontSize: 10, fontWeight: 700, letterSpacing: "0.08em", textTransform: "uppercase", color: C.muted, margin: "0 0 8px" }}>Dato de fan</p>
+          <div style={{ background: C.accent, borderRadius: 10, padding: "12px 14px" }}>
+            <p style={{ fontSize: 13, lineHeight: 1.6, color: C.fg, margin: 0 }}>{d.fun_fact}</p>
+          </div>
+        </div>
+      )}
 
-      {/* Precio en México ahora — MercadoLibre en vivo */}
+      {/* Precio en México — MercadoLibre en vivo */}
       <div style={{ borderTop: `1px solid ${C.border}`, padding: "16px 20px" }}>
         <p style={{ fontSize: 11, fontWeight: 600, letterSpacing: "0.07em", textTransform: "uppercase", color: C.mxGreen, margin: "0 0 14px" }}>
           Precio en México ahora
@@ -333,15 +403,11 @@ function CarSheet({ d, imageUrl, livePrice, priceFetching }) {
             <div style={{ display: "flex", gap: 24 }}>
               <div>
                 <p style={{ fontSize: 11, color: C.muted, margin: "0 0 3px" }}>Mínimo</p>
-                <p style={{ fontSize: 14, fontWeight: 700, color: C.green, margin: 0 }}>
-                  ${livePrice.min.toLocaleString("es-MX")}
-                </p>
+                <p style={{ fontSize: 14, fontWeight: 700, color: C.green, margin: 0 }}>${livePrice.min.toLocaleString("es-MX")}</p>
               </div>
               <div>
                 <p style={{ fontSize: 11, color: C.muted, margin: "0 0 3px" }}>Máximo</p>
-                <p style={{ fontSize: 14, fontWeight: 700, color: C.red, margin: 0 }}>
-                  ${livePrice.max.toLocaleString("es-MX")}
-                </p>
+                <p style={{ fontSize: 14, fontWeight: 700, color: C.red, margin: 0 }}>${livePrice.max.toLocaleString("es-MX")}</p>
               </div>
             </div>
           </>
@@ -359,37 +425,6 @@ function CarSheet({ d, imageUrl, livePrice, priceFetching }) {
         <div style={{ fontSize: 11, fontWeight: 600, letterSpacing: "0.07em", textTransform: "uppercase", color: C.mxGreen, padding: "14px 20px 6px" }}>
           Mercado México 🇲🇽
         </div>
-
-        {/* Rareza */}
-        {rarityScore > 0 && (
-          <div style={{ padding: "10px 20px 14px", borderBottom: `1px solid ${C.border}` }}>
-            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 8 }}>
-              <span style={{ fontSize: 13, color: C.muted }}>Rareza en México</span>
-              <span style={{
-                fontSize: 12, fontWeight: 700,
-                color: rarityColor,
-                background: rarityColor + "18",
-                borderRadius: r.pill, padding: "3px 10px",
-              }}>
-                {rarityLabel}
-              </span>
-            </div>
-            <div style={{ height: 5, background: C.accent, borderRadius: 3, overflow: "hidden" }}>
-              <div style={{
-                width: `${Math.min(rarityScore * 10, 100)}%`,
-                height: "100%",
-                background: rarityColor,
-                borderRadius: 3,
-              }} />
-            </div>
-            {d.units_in_mx && String(d.units_in_mx).toLowerCase() !== "null" && (
-              <p style={{ fontSize: 12, color: C.muted, margin: "6px 0 0" }}>
-                {d.units_in_mx} en circulación (estimado)
-              </p>
-            )}
-          </div>
-        )}
-
         {renderRows([
           ["Estatus", d.mexico_status],
           ["Valor Libro Azul", d.libro_azul_estimate],
@@ -587,6 +622,7 @@ Solo cuando el candidato principal tiene ≥ ${CONFIDENCE_THRESHOLD}% de confian
     "mod_potential":"Potencial de modificación",
     "production_total":"Total producidos",
     "special_editions":"Ediciones especiales o null",
+    "narrative":"2-3 frases con alma. La esencia de este coche: su lugar en la historia, qué lo hace único, por qué importa. Escrito como intro de revista especializada. Usa emoción real. Nunca menciones datos que ya están en otros campos.",
     "fun_fact":"Dato específico y verificable, máx 2 frases. NUNCA genérico.",
     "movie_appearances":"Películas/series/juegos con nombre específico o null",
     "celebrity_connection":"Piloto o celebridad verificable o null",
