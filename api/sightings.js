@@ -23,14 +23,14 @@ export default async function handler(req, res) {
     }
 
     if (req.method === "POST") {
-      const { car_make, car_model, car_year, rarity_score, rarity_label, chassis_code, trim, lat, lng } = req.body;
+      const { car_make, car_model, car_year, rarity_score, rarity_label, chassis_code, trim, lat, lng, car_data } = req.body;
       if (!car_make || lat == null || lng == null) {
         return res.status(400).json({ error: "Faltan datos requeridos" });
       }
       const r = await fetch(`${SUPABASE_URL}/rest/v1/sightings`, {
         method: "POST",
         headers: { ...headers, Prefer: "return=representation" },
-        body: JSON.stringify({ car_make, car_model, car_year, rarity_score, rarity_label, chassis_code, trim, lat, lng }),
+        body: JSON.stringify({ car_make, car_model, car_year, rarity_score, rarity_label, chassis_code, trim, lat, lng, car_data: car_data || null }),
       });
       const data = await r.json();
       return res.status(200).json(data);

@@ -495,12 +495,10 @@ function CarSheet({ d, imageUrl, livePrice, priceFetching }) {
       <div style={{ borderTop: `1px solid ${C.border}`, padding: "14px 20px" }}>
         <button
           onClick={() => {
-            const encoded = encodeURIComponent(buildTikTokQuery(d));
-            window.location.href = `tiktok://search?keyword=${encoded}`;
-            setTimeout(() => {
-              if (!document.hidden)
-                window.open(`https://www.tiktok.com/search?q=${encoded}`, "_blank");
-            }, 1500);
+            window.open(
+              `https://www.tiktok.com/search?q=${encodeURIComponent(buildTikTokQuery(d))}`,
+              "_blank", "noopener,noreferrer"
+            );
           }}
           style={{
             display: "flex", alignItems: "center", justifyContent: "center", gap: 9,
@@ -545,6 +543,8 @@ export default function CarScanner() {
   const [confidence, setConfidence] = useState(null);
   const [questionCount, setQuestionCount] = useState(0);
   const [photoGPS, setPhotoGPS] = useState(null);
+  const [deleteMode, setDeleteMode] = useState(null);
+  const [ownerDeleteMode, setOwnerDeleteMode] = useState(false);
   const [ownerMap, setOwnerMap] = useState({});
   const [ownerSetupOpen, setOwnerSetupOpen] = useState(false);
   const [ownerNotes, setOwnerNotes] = useState("");
@@ -553,6 +553,7 @@ export default function CarScanner() {
   const [ownerScans, setOwnerScans] = useState(null);
   const [ownerProfile, setOwnerProfile] = useState(null);
   const fileRef = useRef(null);
+  const pressRef = useRef(null);
 
   useEffect(() => {
     try {
@@ -759,15 +760,37 @@ Solo cuando el candidato principal tiene ≥ ${CONFIDENCE_THRESHOLD}% de confian
   }
 }
 
-══ RAREZA EN MÉXICO — CALIBRACIÓN ══
-Calibra rarity_score con estos referentes reales:
-- Score 1-2: Nissan Tsuru/Versa, VW Jetta A4, Chevy Corsa — >100,000 unidades
-- Score 3-4: Honda Civic, Mazda 3, VW Golf, Ford Focus — 20,000-100,000
-- Score 4-5: Subaru Impreza, Honda Accord, Nissan Altima — 5,000-20,000
-- Score 5-6: Subaru WRX/STI, Nissan 370Z, VW Golf R/GTI — 1,000-5,000
-- Score 7-8: Nissan GT-R R35, Porsche 911, BMW M3/M5 — 200-1,000
-- Score 8-9: Ferrari 488, Lamborghini Huracán, McLaren — 50-200
-- Score 9-10: Bugatti, Koenigsegg, ediciones únicas, prototipos — <50
+══ RAREZA EN MÉXICO — FÓRMULA PONDERADA ══
+Calcula rarity_score sumando estos 4 factores objetivos:
+
+FACTOR A — Unidades en circulación en México (peso principal):
+  >100,000 → 1 pt | 30,000-100,000 → 2 pt | 10,000-30,000 → 3 pt
+  3,000-10,000 → 4 pt | 1,000-3,000 → 5 pt | 300-1,000 → 6 pt
+  100-300 → 7 pt | 30-100 → 8 pt | 10-30 → 9 pt | <10 → 10 pt
+
+FACTOR B — Disponibilidad de compra nueva en México (+0 a +1.5):
+  En concesionaria hoy: +0 | Solo importación directa: +0.5
+  Fuera de producción, solo mercado secundario: +1
+  Nunca vendido oficialmente en MX: +1.5
+
+FACTOR C — Exclusividad de producción global (+0 a +1):
+  Producción masiva (>50,000 unidades mundiales del modelo): +0
+  Producción limitada (5,000-50,000): +0.5
+  Edición especial o limitada (<5,000 unidades totales): +1
+
+FACTOR D — Visibilidad real en calle CDMX (+0 a -1 ajuste):
+  Lo ves varias veces por semana: -0.5 (baja el score)
+  Lo ves ocasionalmente: +0
+  Rarísimo verlo (una vez por mes o menos): +0.5
+
+SUMA A+B+C+D, redondea al entero más cercano, clampea a [1,10].
+Score 10 RESERVADO: coches de los que hay literalmente <5 en todo México.
+Score 9: <30 unidades en México (Ferrari LaFerrari, Bugatti Chiron MX).
+Score 8: 30-100 unidades (Ferrari 488, Lamborghini Huracán base).
+Score 7: 100-300 unidades (Porsche 911 GT3, BMW M4 Competition).
+Score 5-6: 300-3,000 unidades (Porsche 911 Carrera, BMW M3, WRX STI).
+Score 3-4: 3,000-30,000 (Honda Civic Type R, VW Golf R, Mazda MX-5).
+Score 1-2: >30,000 (Nissan Tsuru, VW Jetta A4, Chevy Corsa, Nissan Versa).
 
 ══ MARCAS CHINAS EN MÉXICO (2023-2026) ══
 Identifica correctamente estas marcas: BYD, MG (de SAIC — no el MG clásico inglés), Wuling, NETA, Jaecoo, OMODA, GAC AION, BAIC, Chery, Haval, Great Wall, JAC, Geely, Zeekr, NIO, Leapmotor.
@@ -886,7 +909,7 @@ Calibración para México:
           car_make: result.make, car_model: result.model,
           car_year: result.year, rarity_score: result.rarity_score,
           rarity_label: result.rarity_label, chassis_code: result.chassis_code,
-          trim: result.trim, lat, lng,
+          trim: result.trim, lat, lng, car_data: result,
         }),
       });
       setSightingStatus("done");
@@ -895,6 +918,32 @@ Calibración para México:
       setSightingStatus("error");
       setTimeout(() => setSightingStatus(null), 2500);
     }
+  };
+
+  const viewSightingCar = (sighting) => {
+    const car = sighting.car_data || {
+      make: sighting.car_make, model: sighting.car_model, year: sighting.car_year,
+      trim: sighting.trim, chassis_code: sighting.chassis_code,
+      rarity_score: sighting.rarity_score, rarity_label: sighting.rarity_label,
+    };
+    setResult(car);
+    setFromCommunity(true);
+    setConfidence(null);
+    setLivePrice(null);
+    setImageData(null);
+    setStage("result");
+    setView("scan");
+    fetchPrice(car);
+  };
+
+  const deleteOwnerProfile = (carId) => {
+    setOwnerMap(prev => {
+      const next = { ...prev };
+      delete next[carId];
+      try { localStorage.setItem("scancar-owner-v1", JSON.stringify(next)); } catch (_) {}
+      return next;
+    });
+    setOwnerDeleteMode(false);
   };
 
   const buildOwnerUrl = (profileId) => `${window.location.origin}/?owner=${profileId}`;
@@ -1252,7 +1301,14 @@ Calibración para México:
                   return (
                     <button
                       key={d.id}
+                      onTouchStart={() => { clearTimeout(pressRef.current); pressRef.current = setTimeout(() => { if (navigator.vibrate) navigator.vibrate(25); setDeleteMode(d.id); }, 500); }}
+                      onTouchEnd={() => clearTimeout(pressRef.current)}
+                      onTouchCancel={() => clearTimeout(pressRef.current)}
+                      onMouseDown={() => { clearTimeout(pressRef.current); pressRef.current = setTimeout(() => setDeleteMode(d.id), 600); }}
+                      onMouseUp={() => clearTimeout(pressRef.current)}
+                      onContextMenu={e => e.preventDefault()}
                       onClick={() => {
+                        if (deleteMode) { setDeleteMode(null); return; }
                         setSelectedCar(d); setLivePrice(null); setView("car-detail"); fetchPrice(d);
                         setOwnerSetupOpen(false); setOwnerScans(null);
                         const pid = ownerMap[d.id];
@@ -1261,9 +1317,16 @@ Calibración para México:
                             .then(data => setOwnerScans(data.scan_count ?? null)).catch(() => {});
                         }
                       }}
-                      style={{ background: C.surface, border: `1px solid ${C.border}`, borderRadius: r.lg, padding: "10px 14px 10px 10px", display: "flex", alignItems: "center", cursor: "pointer", textAlign: "left", fontFamily: font, width: "100%", gap: 12 }}
-                      onMouseEnter={e => e.currentTarget.style.background = C.accent}
-                      onMouseLeave={e => e.currentTarget.style.background = C.surface}
+                      style={{
+                        background: deleteMode === d.id ? "#FFF5F5" : C.surface,
+                        border: `1px solid ${deleteMode === d.id ? C.red + "55" : C.border}`,
+                        borderRadius: r.lg, padding: "10px 14px 10px 10px",
+                        display: "flex", alignItems: "center", cursor: "pointer",
+                        textAlign: "left", fontFamily: font, width: "100%", gap: 12,
+                        transition: "background 0.12s, border-color 0.12s",
+                      }}
+                      onMouseEnter={e => { if (deleteMode !== d.id) e.currentTarget.style.background = C.accent; }}
+                      onMouseLeave={e => { e.currentTarget.style.background = deleteMode === d.id ? "#FFF5F5" : C.surface; }}
                     >
                       {d.photo ? (
                         <img src={d.photo} alt="" style={{ width: 54, height: 54, objectFit: "cover", borderRadius: 8, flexShrink: 0 }} />
@@ -1280,14 +1343,23 @@ Calibración para México:
                           {val(d.chassis_code) !== "—" ? val(d.chassis_code) : val(d.generation)}{" · "}{val(d.year)}
                         </p>
                       </div>
-                      <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-end", gap: 4, flexShrink: 0 }}>
-                        {d.rarity_score > 0 && (
-                          <span style={{ fontSize: 11, fontWeight: 700, color: rc, background: rc + "15", borderRadius: r.pill, padding: "2px 8px" }}>
-                            {getRarityLabel(d.rarity_score)}
-                          </span>
-                        )}
-                        <span style={{ color: C.border, fontSize: 16 }}>›</span>
-                      </div>
+                      {deleteMode === d.id ? (
+                        <button
+                          onClick={e => { e.stopPropagation(); deleteFromDb(d.id); setDeleteMode(null); }}
+                          style={{ background: C.red, color: "#fff", border: "none", borderRadius: r.md, padding: "8px 16px", fontSize: 13, fontWeight: 700, cursor: "pointer", fontFamily: font, flexShrink: 0 }}
+                        >
+                          Eliminar
+                        </button>
+                      ) : (
+                        <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-end", gap: 4, flexShrink: 0 }}>
+                          {d.rarity_score > 0 && (
+                            <span style={{ fontSize: 11, fontWeight: 700, color: rc, background: rc + "15", borderRadius: r.pill, padding: "2px 8px" }}>
+                              {getRarityLabel(d.rarity_score)}
+                            </span>
+                          )}
+                          <span style={{ color: C.border, fontSize: 16 }}>›</span>
+                        </div>
+                      )}
                     </button>
                   );
                 })}
@@ -1382,45 +1454,75 @@ Calibración para México:
             const ownerUrl = buildOwnerUrl(profileId);
             const qrSrc = `https://api.qrserver.com/v1/create-qr-code/?size=120x120&ecc=M&data=${encodeURIComponent(ownerUrl)}`;
             return (
-              <div style={{ marginTop: 12, background: "#010101", borderRadius: r.xl, padding: 20 }}>
-                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 16 }}>
-                  <div>
-                    <p style={{ fontSize: 11, fontWeight: 700, letterSpacing: "0.08em", textTransform: "uppercase", color: "#ffffff50", margin: "0 0 4px" }}>Owner Mode activo</p>
-                    <p style={{ fontSize: 30, fontWeight: 800, color: "#fff", margin: "0 0 2px", lineHeight: 1, letterSpacing: "-0.03em" }}>
-                      {ownerScans != null ? ownerScans : "—"}
-                    </p>
-                    <p style={{ fontSize: 12, color: "#ffffff50", margin: 0 }}>escaneos de tu ficha</p>
+              <div
+                style={{ marginTop: 12, background: ownerDeleteMode ? "#3A0000" : "#010101", borderRadius: r.xl, padding: 20, transition: "background 0.15s", userSelect: "none" }}
+                onTouchStart={() => { clearTimeout(pressRef.current); pressRef.current = setTimeout(() => { if (navigator.vibrate) navigator.vibrate(25); setOwnerDeleteMode(true); }, 500); }}
+                onTouchEnd={() => clearTimeout(pressRef.current)}
+                onTouchCancel={() => clearTimeout(pressRef.current)}
+                onMouseDown={() => { clearTimeout(pressRef.current); pressRef.current = setTimeout(() => setOwnerDeleteMode(true), 600); }}
+                onMouseUp={() => clearTimeout(pressRef.current)}
+                onContextMenu={e => e.preventDefault()}
+              >
+                {ownerDeleteMode ? (
+                  <div style={{ textAlign: "center" }}>
+                    <p style={{ fontSize: 13, color: "#ffffff80", margin: "0 0 16px" }}>¿Quitar el card de Owner Mode?</p>
+                    <div style={{ display: "flex", gap: 8 }}>
+                      <button
+                        onClick={() => deleteOwnerProfile(selectedCar.id)}
+                        style={{ flex: 1, background: C.red, color: "#fff", border: "none", borderRadius: r.lg, padding: "12px", fontSize: 14, fontWeight: 700, cursor: "pointer", fontFamily: font }}
+                      >
+                        Eliminar
+                      </button>
+                      <button
+                        onClick={() => setOwnerDeleteMode(false)}
+                        style={{ flex: 1, background: "#ffffff20", color: "#fff", border: "none", borderRadius: r.lg, padding: "12px", fontSize: 14, fontWeight: 600, cursor: "pointer", fontFamily: font }}
+                      >
+                        Cancelar
+                      </button>
+                    </div>
                   </div>
-                  <div style={{ background: "#fff", borderRadius: 10, padding: 6 }}>
-                    <img src={qrSrc} alt="QR" width={80} height={80} style={{ display: "block" }} />
-                  </div>
-                </div>
-                <div style={{ display: "flex", gap: 8 }}>
-                  <button
-                    onClick={() => {
-                      if (navigator.share) navigator.share({ title: `${selectedCar.make} ${selectedCar.model}`, url: ownerUrl });
-                      else navigator.clipboard.writeText(ownerUrl);
-                    }}
-                    style={{ flex: 1, background: "#ffffff18", color: "#fff", border: "1px solid #ffffff25", borderRadius: r.lg, padding: "11px", fontSize: 13, fontWeight: 600, cursor: "pointer", fontFamily: font }}
-                  >
-                    ↗ Compartir
-                  </button>
-                  <button
-                    onClick={async () => {
-                      const qrFullSrc = `https://api.qrserver.com/v1/create-qr-code/?size=400x400&ecc=M&data=${encodeURIComponent(ownerUrl)}`;
-                      const blob = await (await fetch(qrFullSrc)).blob();
-                      const objUrl = URL.createObjectURL(blob);
-                      const a = document.createElement("a");
-                      a.href = objUrl;
-                      a.download = `owner-${selectedCar.make}-${selectedCar.model}.png`.replace(/\s+/g, "-").toLowerCase();
-                      a.click();
-                      URL.revokeObjectURL(objUrl);
-                    }}
-                    style={{ flex: 1, background: "#ffffff18", color: "#fff", border: "1px solid #ffffff25", borderRadius: r.lg, padding: "11px", fontSize: 13, fontWeight: 600, cursor: "pointer", fontFamily: font }}
-                  >
-                    ↓ QR
-                  </button>
-                </div>
+                ) : (
+                  <>
+                    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 16 }}>
+                      <div>
+                        <p style={{ fontSize: 11, fontWeight: 700, letterSpacing: "0.08em", textTransform: "uppercase", color: "#ffffff50", margin: "0 0 4px" }}>Owner Mode · mantén presionado para eliminar</p>
+                        <p style={{ fontSize: 30, fontWeight: 800, color: "#fff", margin: "0 0 2px", lineHeight: 1, letterSpacing: "-0.03em" }}>
+                          {ownerScans != null ? ownerScans : "—"}
+                        </p>
+                        <p style={{ fontSize: 12, color: "#ffffff50", margin: 0 }}>escaneos de tu ficha</p>
+                      </div>
+                      <div style={{ background: "#fff", borderRadius: 10, padding: 6 }}>
+                        <img src={qrSrc} alt="QR" width={80} height={80} style={{ display: "block" }} />
+                      </div>
+                    </div>
+                    <div style={{ display: "flex", gap: 8 }}>
+                      <button
+                        onClick={() => {
+                          if (navigator.share) navigator.share({ title: `${selectedCar.make} ${selectedCar.model}`, url: ownerUrl });
+                          else navigator.clipboard.writeText(ownerUrl);
+                        }}
+                        style={{ flex: 1, background: "#ffffff18", color: "#fff", border: "1px solid #ffffff25", borderRadius: r.lg, padding: "11px", fontSize: 13, fontWeight: 600, cursor: "pointer", fontFamily: font }}
+                      >
+                        ↗ Compartir
+                      </button>
+                      <button
+                        onClick={async () => {
+                          const qrFullSrc = `https://api.qrserver.com/v1/create-qr-code/?size=400x400&ecc=M&data=${encodeURIComponent(ownerUrl)}`;
+                          const blob = await (await fetch(qrFullSrc)).blob();
+                          const objUrl = URL.createObjectURL(blob);
+                          const a = document.createElement("a");
+                          a.href = objUrl;
+                          a.download = `owner-${selectedCar.make}-${selectedCar.model}.png`.replace(/\s+/g, "-").toLowerCase();
+                          a.click();
+                          URL.revokeObjectURL(objUrl);
+                        }}
+                        style={{ flex: 1, background: "#ffffff18", color: "#fff", border: "1px solid #ffffff25", borderRadius: r.lg, padding: "11px", fontSize: 13, fontWeight: 600, cursor: "pointer", fontFamily: font }}
+                      >
+                        ↓ QR
+                      </button>
+                    </div>
+                  </>
+                )}
               </div>
             );
           }
@@ -1611,7 +1713,7 @@ Calibración para México:
       </div>
 
       {/* Content */}
-      <div style={{ maxWidth: 480, margin: "0 auto", padding: "20px 20px calc(80px + env(safe-area-inset-bottom, 0px))" }}>
+      <div style={{ maxWidth: 480, margin: "0 auto", padding: "20px 20px calc(80px + env(safe-area-inset-bottom, 0px))" }} onClick={() => { if (deleteMode) setDeleteMode(null); }}>
         {view === "scan" && (
           <>
             {stage === "idle" && renderScanArea()}
@@ -1623,7 +1725,7 @@ Calibración para México:
         )}
         {view === "gallery" && renderGallery()}
         {view === "car-detail" && renderCarDetail()}
-        {view === "map" && <MapView />}
+        {view === "map" && <MapView onViewCar={viewSightingCar} />}
         {view === "shared" && renderShared()}
         {view === "owner" && renderOwnerPublic()}
       </div>

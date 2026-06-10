@@ -42,7 +42,7 @@ function InvalidateSize() {
   return null;
 }
 
-export default function MapView() {
+export default function MapView({ onViewCar }) {
   const [sightings, setSightings] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
@@ -175,7 +175,10 @@ export default function MapView() {
               const color = rarityColor(s.rarity_score);
               return (
                 <div key={s.id} style={{ background: C.surface, borderRadius: 14, border: `1px solid ${C.border}`, padding: "12px 14px", display: "flex", justifyContent: "space-between", alignItems: "center", gap: 10 }}>
-                  <div style={{ flex: 1, minWidth: 0 }}>
+                  <div
+                    style={{ flex: 1, minWidth: 0, cursor: onViewCar ? "pointer" : "default" }}
+                    onClick={() => onViewCar && onViewCar(s)}
+                  >
                     <p style={{ fontSize: 14, fontWeight: 600, color: C.fg, margin: 0, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
                       {s.car_make} {s.car_model}
                     </p>
@@ -183,6 +186,14 @@ export default function MapView() {
                       {s.car_year ? `${s.car_year} · ` : ""}{timeAgo(s.created_at)}
                     </p>
                   </div>
+                  {onViewCar && (
+                    <button
+                      onClick={() => onViewCar(s)}
+                      style={{ background: C.accent, border: "none", color: C.fg, cursor: "pointer", padding: "5px 10px", fontSize: 12, fontWeight: 600, borderRadius: 8, flexShrink: 0, fontFamily: font }}
+                    >
+                      Ver ficha
+                    </button>
+                  )}
                   <span style={{ fontSize: 11, fontWeight: 700, color, background: color + "15", borderRadius: 100, padding: "3px 10px", flexShrink: 0 }}>
                     {s.rarity_label || rarityLabel(s.rarity_score)}
                   </span>
