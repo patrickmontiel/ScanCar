@@ -1,8 +1,3 @@
-/* Map: B&W — targets tile images directly so markers keep their rarity colors */
-.sc-map img.leaflet-tile {
-  filter: invert(1) grayscale(1) contrast(1.2) brightness(1.04);
-}
-
 .sc-map .leaflet-control-attribution a {
   color: #007AFF;
 }

@@ -478,7 +478,7 @@ function CarSheet({ d, imageUrl, livePrice, priceFetching }) {
             ) : (
               <p style={{ fontSize: 14, color: C.fg, margin: 0 }}>{d.libro_azul_compra || d.libro_azul_venta || d.libro_azul_estimate}</p>
             )}
-            <p style={{ fontSize: 11, color: C.muted, margin: "8px 0 0" }}>Condición: Bueno · librоazul.com.mx</p>
+            <p style={{ fontSize: 11, color: C.muted, margin: "8px 0 0" }}>Estimación basada en mercado MX · Condición: Bueno · Verifica en libroazul.com.mx</p>
           </div>
         )}
         {hasVal(d.refacciones) && (
@@ -689,8 +689,8 @@ Solo cuando el candidato principal tiene ≥ ${CONFIDENCE_THRESHOLD}% de confian
     "celebrity_connection":"Piloto o celebridad verificable o null",
     "naming_origin":"Origen del nombre o null",
     "mexico_status":"Nacional / Importado-regularizable / Chocolate común / Raro en México / Clásico-coleccionable",
-    "libro_azul_compra":"Precio de compra Libro Azul en MXN (lo que te pagarían por el coche), condición Bueno. Ej: '$185,000 MXN'. Para clásicos +30 años: 'No aplica — clásico coleccionable.'",
-    "libro_azul_venta":"Precio de venta Libro Azul en MXN (lo que pagarías por comprarlo), condición Bueno. Ej: '$210,000 MXN'. Para clásicos +30 años: 'No aplica — clásico coleccionable.'",
+    "libro_azul_compra":"Estimación del precio de compra estilo Libro Azul en MXN (lo que te pagarían por el coche), condición Bueno, basado en mercado mexicano actual. Ej: '$185,000 MXN'. Para clásicos +30 años o >$50k USD: 'No aplica — clásico coleccionable.'",
+    "libro_azul_venta":"Estimación del precio de venta estilo Libro Azul en MXN (lo que pagarías para comprarlo), condición Bueno, basado en mercado mexicano actual. Ej: '$210,000 MXN'. Para clásicos +30 años o >$50k USD: 'No aplica — clásico coleccionable.'",
     "holograma":"Holograma CDMX: +30 años = EXENTO. 2000+ aplica 00/0/1/2.",
     "tenencia_note":"Nota tenencia por estado",
     "refacciones":"Excelente / Buena / Limitada / Difícil",
