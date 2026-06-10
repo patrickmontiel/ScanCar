@@ -126,29 +126,8 @@ const getRarityLabel = (score) => {
   return "Común";
 };
 
-// ── Club directory ───────────────────────────────────────────────
-const CLUBS = [
-  { makes: ["bmw"], name: "BMW Car Club México", ig: "bmwcarclubmexico" },
-  { makes: ["porsche"], name: "Porsche Club México", ig: "porscheclubmexico" },
-  { makes: ["ferrari"], name: "Ferrari Club México", ig: "ferrariclubmexico" },
-  { makes: ["lamborghini"], name: "Lamborghini Club México", ig: "lamborghiniclubmx" },
-  { makes: ["mercedes"], name: "Mercedes-Benz Club México", ig: "mbclubmexico" },
-  { makes: ["audi"], name: "Audi Club México", ig: "audiclubmexico" },
-  { makes: ["volkswagen"], name: "VW Enthusiasts MX", ig: "vwmx" },
-  { makes: ["subaru"], name: "Subaru Club México", ig: "subaruclubmx" },
-  { makes: ["honda"], name: "Honda Club México", ig: "hondaclubmx" },
-  { makes: ["nissan"], name: "Nissan Club México", ig: "nissanclubmx" },
-  { makes: ["toyota"], name: "Toyota Club México", ig: "toyotaclubmx" },
-  { makes: ["mazda"], name: "Mazda Club México", ig: "mazdaclubmx" },
-  { makes: ["ford"], name: "Ford Mustang Club MX", ig: "mustangclubmx" },
-  { makes: ["chevrolet"], name: "Corvette Club México", ig: "corvettemx" },
-  { makes: ["dodge"], name: "Mopar Club México", ig: "moparmx" },
-  { makes: ["byd", "mg"], name: "EV Club México", ig: "evclubmx" },
-];
-const getClubs = (cars) => {
-  const makes = cars.map(c => (c.make || "").toLowerCase());
-  return CLUBS.filter(cl => cl.makes.some(m => makes.some(cm => cm.includes(m))));
-};
+// ── Club directory (pendiente verificar datos reales) ────────────
+const getClubs = (_cars) => [];
 
 // ── Origin classifier ───────────────────────────────────────────
 const getOrigin = (make) => {
