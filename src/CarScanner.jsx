@@ -850,7 +850,15 @@ Calibración para México:
   const onFile = async (e) => {
     const file = e.target.files?.[0];
     if (!file) return;
-    try { setPhotoGPS(await exifr.gps(file) || null); } catch (_) { setPhotoGPS(null); }
+    try {
+      // exifr.gps() falla silenciosamente en HEIC/algunos JPEG; parse() es más robusto
+      const exifData = await exifr.parse(file, { gps: true, tiff: false });
+      setPhotoGPS(
+        exifData?.latitude != null && exifData?.longitude != null
+          ? { latitude: exifData.latitude, longitude: exifData.longitude }
+          : null
+      );
+    } catch (_) { setPhotoGPS(null); }
     const { dataUrl, mediaType, b64 } = await resizeImage(file);
     setImageData(dataUrl);
     startAnalysis(b64, mediaType);
@@ -1092,13 +1100,26 @@ Calibración para México:
               <span style={{ fontSize: 15, fontWeight: 600, color: C.orange }}>📍 Avistamiento en el mapa</span>
             </div>
           ) : (
-            <button
-              onClick={logSighting}
-              disabled={sightingStatus === "loading"}
-              style={{ width: "100%", background: "transparent", color: sightingStatus === "loading" ? C.muted : C.fg, border: `1.5px solid ${C.border}`, borderRadius: r.lg, padding: "12px", fontSize: 14, fontWeight: 500, cursor: sightingStatus === "loading" ? "default" : "pointer", fontFamily: font }}
-            >
-              {sightingStatus === "loading" ? "Obteniendo ubicación…" : sightingStatus === "error" ? "Sin permiso de ubicación" : "📍 Registrar avistamiento"}
-            </button>
+            <div>
+              {photoGPS && (
+                <div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 6, padding: "6px 12px", background: "#F0FFF4", borderRadius: r.md, border: `1px solid ${C.green}` }}>
+                  <span style={{ fontSize: 12, color: C.green, fontWeight: 600 }}>📍 GPS detectado en la foto</span>
+                  <span style={{ fontSize: 11, color: C.muted, marginLeft: "auto" }}>
+                    {photoGPS.latitude.toFixed(4)}, {photoGPS.longitude.toFixed(4)}
+                  </span>
+                </div>
+              )}
+              <button
+                onClick={logSighting}
+                disabled={sightingStatus === "loading"}
+                style={{ width: "100%", background: "transparent", color: sightingStatus === "loading" ? C.muted : C.fg, border: `1.5px solid ${C.border}`, borderRadius: r.lg, padding: "12px", fontSize: 14, fontWeight: 500, cursor: sightingStatus === "loading" ? "default" : "pointer", fontFamily: font }}
+              >
+                {sightingStatus === "loading"
+                  ? (photoGPS ? "Registrando ubicación de foto…" : "Obteniendo ubicación…")
+                  : sightingStatus === "error" ? "Sin permiso de ubicación"
+                  : `📍 Registrar avistamiento${photoGPS ? " (foto)" : ""}`}
+              </button>
+            </div>
           )}
           <button
             onClick={() => shareResult(result, livePrice)}
