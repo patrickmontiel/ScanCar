@@ -40,7 +40,7 @@ function InvalidateSize() {
     setTimeout(() => {
       map.invalidateSize();
       const tilePanes = map.getContainer().querySelectorAll(".leaflet-tile-pane");
-      tilePanes.forEach(el => { el.style.filter = "grayscale(1) brightness(1.08) contrast(0.9)"; });
+      tilePanes.forEach(el => { el.style.filter = "grayscale(1) contrast(2) brightness(0.72)"; });
     }, 150);
   }, [map]);
   return null;
