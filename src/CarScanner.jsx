@@ -487,6 +487,8 @@ export default function CarScanner() {
   const [customAnswer, setCustomAnswer] = useState("");
   const [showQR, setShowQR] = useState(false);
   const [sharedCar, setSharedCar] = useState(null);
+  const [confidence, setConfidence] = useState(null);
+  const [questionCount, setQuestionCount] = useState(0);
   const fileRef = useRef(null);
 
   useEffect(() => {
@@ -719,10 +721,12 @@ Calibración para México:
     }
   };
 
-  const handleParsed = (parsed) => {
+  const handleParsed = (parsed, qCount = 0) => {
     if (parsed.type === "result") {
       setResult(parsed.car);
       setFromCommunity(!!parsed.fromCommunity);
+      setConfidence(parsed.confidence ?? null);
+      setQuestionCount(qCount);
       setStage("result");
       fetchPrice(parsed.car);
     } else if (parsed.type === "question") {
@@ -734,6 +738,8 @@ Calibración para México:
 
   const answerQuestion = async (answer) => {
     setStage("analyzing");
+    const newQCount = questionCount + 1;
+    setQuestionCount(newQCount);
     const messages = [...history, {
       role: "user",
       content: [{ type: "text", text: `El usuario respondió: "${answer}". Si ahora tienes confianza >= ${CONFIDENCE_THRESHOLD}%, devuelve resultado con TODOS los campos del schema. Si sigues con duda, haz otra pregunta. ${buildSystemInstruction()}` }],
@@ -741,7 +747,7 @@ Calibración para México:
     try {
       const parsed = await callAPI(messages);
       setHistory([...messages, { role: "assistant", content: JSON.stringify(parsed) }]);
-      handleParsed(parsed);
+      handleParsed(parsed, newQCount);
     } catch (e) {
       setErrorMsg("Error procesando tu respuesta."); setStage("error");
     }
@@ -824,6 +830,7 @@ Calibración para México:
     setErrorMsg(""); setFromCommunity(false); setSavedToGarage(false);
     setLivePrice(null); setPriceFetching(false); setSightingStatus(null);
     setShareStatus(null); setCustomAnswer("");
+    setConfidence(null); setQuestionCount(0);
     if (fileRef.current) fileRef.current.value = "";
   };
 
@@ -926,11 +933,28 @@ Calibración para México:
     </div>
   );
 
-  const renderResult = () => (
+  const renderResult = () => {
+    const confColor = confidence >= 95 ? C.green : confidence >= 80 ? C.blue : confidence >= 65 ? C.orange : C.red;
+    const confLabel = confidence >= 95 ? "Identificación directa" : confidence >= 80 ? "Alta confianza" : confidence >= 65 ? "Confianza media" : "Confianza baja";
+    return (
     <div>
       {imageData && (
         <div style={{ borderRadius: r.xl, overflow: "hidden", marginBottom: 12, border: `1px solid ${C.border}` }}>
           <img src={imageData} alt="coche" style={{ width: "100%", display: "block", maxHeight: 220, objectFit: "cover" }} />
+        </div>
+      )}
+      {confidence != null && (
+        <div style={{ background: C.surface, border: `1px solid ${C.border}`, borderRadius: r.lg, padding: "10px 16px", marginBottom: 10, display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+            <span style={{ fontSize: 13, color: C.muted }}>Precisión</span>
+            {questionCount > 0 && <span style={{ fontSize: 11, color: C.muted, background: C.accent, borderRadius: r.pill, padding: "2px 8px" }}>{questionCount} pregunta{questionCount > 1 ? "s" : ""}</span>}
+          </div>
+          <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+            <div style={{ width: 80, height: 4, background: C.accent, borderRadius: 2, overflow: "hidden" }}>
+              <div style={{ width: `${confidence}%`, height: "100%", background: confColor, borderRadius: 2 }} />
+            </div>
+            <span style={{ fontSize: 14, fontWeight: 700, color: confColor, minWidth: 36, textAlign: "right" }}>{confidence}%</span>
+          </div>
         </div>
       )}
       <div style={{ background: C.surface, borderRadius: r.xl, border: `1px solid ${C.border}`, overflow: "hidden" }}>
@@ -977,7 +1001,7 @@ Calibración para México:
         </div>
       </div>
     </div>
-  );
+  );};
 
   const renderError = () => (
     <div style={{ background: C.surface, borderRadius: r.xl, border: `1px solid ${C.border}`, padding: 28, textAlign: "center" }}>
