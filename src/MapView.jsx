@@ -40,7 +40,7 @@ function InvalidateSize() {
     setTimeout(() => {
       map.invalidateSize();
       const tilePanes = map.getContainer().querySelectorAll(".leaflet-tile-pane");
-      tilePanes.forEach(el => { el.style.filter = "grayscale(1) contrast(2) brightness(0.72)"; });
+      tilePanes.forEach(el => { el.style.filter = "invert(1) grayscale(1) contrast(1.1) brightness(1.05)"; });
     }, 150);
   }, [map]);
   return null;
@@ -115,7 +115,7 @@ export default function MapView() {
         >
           <InvalidateSize />
           <TileLayer
-            url="https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png"
+            url="https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png"
             attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OSM</a> &copy; <a href="https://carto.com/attributions">CARTO</a>'
           />
           {sightings.map(s => {
