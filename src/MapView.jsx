@@ -100,12 +100,11 @@ export default function MapView() {
       </div>
 
       {/* Map */}
-      <style>{`.sc-map .leaflet-tile-pane{filter:invert(1) grayscale(1) contrast(1.15) brightness(1.05)}`}</style>
       <div style={{ borderRadius: 18, overflow: "hidden", border: `1px solid ${C.border}`, marginBottom: 16, boxShadow: "0 2px 12px rgba(0,0,0,0.06)" }}>
         <MapContainer
           className="sc-map"
           center={[19.4326, -99.1332]}
-          zoom={sightings.length > 0 ? 10 : 5}
+          zoom={12}
           style={{ height: "52vh", width: "100%" }}
           zoomControl={false}
         >

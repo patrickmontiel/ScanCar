@@ -126,6 +126,30 @@ const getRarityLabel = (score) => {
   return "Común";
 };
 
+// ── Club directory ───────────────────────────────────────────────
+const CLUBS = [
+  { makes: ["bmw"], name: "BMW Car Club México", ig: "bmwcarclubmexico" },
+  { makes: ["porsche"], name: "Porsche Club México", ig: "porscheclubmexico" },
+  { makes: ["ferrari"], name: "Ferrari Club México", ig: "ferrariclubmexico" },
+  { makes: ["lamborghini"], name: "Lamborghini Club México", ig: "lamborghiniclubmx" },
+  { makes: ["mercedes"], name: "Mercedes-Benz Club México", ig: "mbclubmexico" },
+  { makes: ["audi"], name: "Audi Club México", ig: "audiclubmexico" },
+  { makes: ["volkswagen"], name: "VW Enthusiasts MX", ig: "vwmx" },
+  { makes: ["subaru"], name: "Subaru Club México", ig: "subaruclubmx" },
+  { makes: ["honda"], name: "Honda Club México", ig: "hondaclubmx" },
+  { makes: ["nissan"], name: "Nissan Club México", ig: "nissanclubmx" },
+  { makes: ["toyota"], name: "Toyota Club México", ig: "toyotaclubmx" },
+  { makes: ["mazda"], name: "Mazda Club México", ig: "mazdaclubmx" },
+  { makes: ["ford"], name: "Ford Mustang Club MX", ig: "mustangclubmx" },
+  { makes: ["chevrolet"], name: "Corvette Club México", ig: "corvettemx" },
+  { makes: ["dodge"], name: "Mopar Club México", ig: "moparmx" },
+  { makes: ["byd", "mg"], name: "EV Club México", ig: "evclubmx" },
+];
+const getClubs = (cars) => {
+  const makes = cars.map(c => (c.make || "").toLowerCase());
+  return CLUBS.filter(cl => cl.makes.some(m => makes.some(cm => cm.includes(m))));
+};
+
 // ── Origin classifier ───────────────────────────────────────────
 const getOrigin = (make) => {
   const m = (make || "").toLowerCase();
@@ -454,9 +478,19 @@ function CarSheet({ d, imageUrl, livePrice, priceFetching }) {
           ["Valor Libro Azul", d.libro_azul_estimate],
           ["Holograma CDMX", d.holograma],
           ["Tenencia", d.tenencia_note],
-          ["Refacciones", d.refacciones],
           ["Depreciación MX", d.depreciation_mx],
         ])}
+        {hasVal(d.refacciones) && (
+          <div style={{ padding: "11px 20px", borderTop: `1px solid ${C.border}` }}>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
+              <span style={{ fontSize: 13, color: C.muted, minWidth: "38%" }}>Disponibilidad de refacciones</span>
+              <span style={{ fontSize: 13, fontWeight: 500, textAlign: "right" }}>{d.refacciones}</span>
+            </div>
+            <p style={{ fontSize: 11, color: C.muted, margin: "5px 0 0", lineHeight: 1.5 }}>
+              Excelente = talleres especializados y piezas en stock en México · Buena = disponibles pero puede tardar unos días · Limitada = importación necesaria · Difícil = solo exteriores o bajo pedido
+            </p>
+          </div>
+        )}
         <p style={{ fontSize: 11, color: C.muted, padding: "8px 20px 14px", margin: 0 }}>
           * Estimaciones. Consulta Libro Azul oficial y SEDEMA para valores exactos.
         </p>
@@ -1039,8 +1073,29 @@ Calibración para México:
       <div>
         {/* Profile card */}
         {profile && (
-          <div style={{ background: C.surface, borderRadius: r.xl, border: `1px solid ${C.border}`, padding: "16px 20px", marginBottom: 20 }}>
-            <p style={{ fontSize: 11, fontWeight: 600, letterSpacing: "0.07em", textTransform: "uppercase", color: C.muted, margin: "0 0 10px" }}>Tu perfil</p>
+          <div style={{ background: C.surface, borderRadius: r.xl, border: `1px solid ${C.border}`, padding: "16px 20px", marginBottom: 16 }}>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 10 }}>
+              <p style={{ fontSize: 11, fontWeight: 600, letterSpacing: "0.07em", textTransform: "uppercase", color: C.muted, margin: 0 }}>Tu perfil</p>
+              <button
+                onClick={async () => {
+                  const lines = [`🚗 Mi Garage en ScanCar\n`];
+                  sorted.forEach(g => {
+                    lines.push(`${g.flag} ${g.label}`);
+                    g.cars.forEach(c => lines.push(`  · ${c.make} ${c.model} ${c.year || ""} — ${getRarityLabel(c.rarity_score)}`));
+                  });
+                  lines.push(`\n${profile.join(" · ")}`);
+                  lines.push(`\n📱 Descarga ScanCar`);
+                  const text = lines.join("\n");
+                  try {
+                    if (navigator.share) await navigator.share({ text });
+                    else await navigator.clipboard.writeText(text);
+                  } catch (e) {}
+                }}
+                style={{ background: "transparent", border: `1px solid ${C.border}`, borderRadius: r.pill, padding: "4px 12px", fontSize: 12, color: C.muted, cursor: "pointer", fontFamily: font }}
+              >
+                ↗ Compartir garage
+              </button>
+            </div>
             <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
               {profile.map((tag, i) => (
                 <span key={i} style={{ background: C.primary, color: "#fff", borderRadius: r.pill, padding: "4px 12px", fontSize: 12, fontWeight: 600 }}>{tag}</span>
@@ -1051,6 +1106,32 @@ Calibración para México:
             </p>
           </div>
         )}
+
+        {/* Clubs */}
+        {(() => {
+          const clubs = getClubs(db);
+          if (!clubs.length) return null;
+          return (
+            <div style={{ background: C.surface, borderRadius: r.xl, border: `1px solid ${C.border}`, padding: "16px 20px", marginBottom: 16 }}>
+              <p style={{ fontSize: 11, fontWeight: 600, letterSpacing: "0.07em", textTransform: "uppercase", color: C.muted, margin: "0 0 12px" }}>Clubs para ti</p>
+              <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+                {clubs.map(cl => (
+                  <a
+                    key={cl.name}
+                    href={`https://www.instagram.com/${cl.ig}`}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    style={{ display: "flex", justifyContent: "space-between", alignItems: "center", textDecoration: "none", background: C.accent, borderRadius: r.md, padding: "10px 14px" }}
+                  >
+                    <span style={{ fontSize: 14, fontWeight: 500, color: C.fg }}>{cl.name}</span>
+                    <span style={{ fontSize: 12, color: C.muted }}>@{cl.ig} ↗</span>
+                  </a>
+                ))}
+              </div>
+              <p style={{ fontSize: 11, color: C.muted, margin: "10px 0 0" }}>Basados en las marcas de tu garage</p>
+            </div>
+          );
+        })()}
 
         {/* Album sections */}
         <div style={{ display: "flex", flexDirection: "column", gap: 24 }}>
@@ -1177,6 +1258,30 @@ Calibración para México:
     );
   };
 
+  const downloadQR = async (car) => {
+    const url = buildQRUrl(car);
+    const qrSrc = `https://api.qrserver.com/v1/create-qr-code/?size=400x400&ecc=M&data=${encodeURIComponent(url)}`;
+    try {
+      const res = await fetch(qrSrc);
+      const blob = await res.blob();
+      const objUrl = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = objUrl;
+      a.download = `scancar-${car.make}-${car.model}.png`.replace(/\s+/g, "-").toLowerCase();
+      a.click();
+      URL.revokeObjectURL(objUrl);
+    } catch (e) {}
+  };
+
+  const shareQR = async (car) => {
+    const url = buildQRUrl(car);
+    const text = `Ficha técnica del ${car.make} ${car.model}${car.year ? ` (${car.year})` : ""} — escaneada con ScanCar`;
+    try {
+      if (navigator.share) await navigator.share({ title: `${car.make} ${car.model}`, text, url });
+      else await navigator.clipboard.writeText(url);
+    } catch (e) {}
+  };
+
   const renderQRModal = (car) => {
     if (!showQR || !car) return null;
     const url = buildQRUrl(car);
@@ -1198,9 +1303,23 @@ Calibración para México:
           <p style={{ fontSize: 12, color: C.muted, margin: "16px 0 20px", lineHeight: 1.5 }}>
             Ponlo en tu parabrisas.<br/>Quien lo escanee verá la ficha técnica completa.
           </p>
+          <div style={{ display: "flex", gap: 8, marginBottom: 8 }}>
+            <button
+              onClick={() => downloadQR(car)}
+              style={{ flex: 1, background: C.primary, color: "#fff", border: "none", borderRadius: r.lg, padding: "12px", fontSize: 14, fontWeight: 600, cursor: "pointer", fontFamily: font }}
+            >
+              Descargar
+            </button>
+            <button
+              onClick={() => shareQR(car)}
+              style={{ flex: 1, background: C.accent, color: C.fg, border: "none", borderRadius: r.lg, padding: "12px", fontSize: 14, fontWeight: 600, cursor: "pointer", fontFamily: font }}
+            >
+              Compartir link
+            </button>
+          </div>
           <button
             onClick={() => setShowQR(false)}
-            style={{ width: "100%", background: C.accent, color: C.fg, border: "none", borderRadius: r.lg, padding: "12px", fontSize: 14, fontWeight: 600, cursor: "pointer", fontFamily: font }}
+            style={{ width: "100%", background: "transparent", color: C.muted, border: "none", borderRadius: r.lg, padding: "10px", fontSize: 13, cursor: "pointer", fontFamily: font }}
           >
             Cerrar
           </button>

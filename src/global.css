@@ -1,0 +1,9 @@
+/* Map: B&W blueprint — applied to tile layer only so markers keep their colors */
+.sc-map .leaflet-tile-pane {
+  filter: invert(1) grayscale(1) contrast(1.2) brightness(1.04);
+}
+
+/* Leaflet attribution link colors on inverted map */
+.sc-map .leaflet-control-attribution a {
+  color: #007AFF;
+}
