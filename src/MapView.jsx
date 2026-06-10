@@ -10,20 +10,22 @@ const font = "-apple-system, BlinkMacSystemFont, 'SF Pro Display', 'Segoe UI', s
 
 const rarityColor = (score) => {
   const n = Number(score);
-  if (n >= 9) return "#F59E0B";
-  if (n >= 7) return "#F97316";
-  if (n >= 5) return "#8B5CF6";
-  if (n >= 3) return "#007AFF";
-  return "#8E8E93";
+  if (n === 10) return "#FF2D55";
+  if (n >= 8)   return "#BF5AF2";
+  if (n >= 6)   return "#F97316";
+  if (n >= 4)   return "#007AFF";
+  if (n >= 2)   return "#8E8E93";
+  return "#C7C7CC";
 };
 
 const rarityLabel = (score) => {
   const n = Number(score);
-  if (n >= 9) return "Unicornio";
-  if (n >= 7) return "Muy raro";
-  if (n >= 5) return "Raro";
-  if (n >= 3) return "Poco común";
-  return "Común";
+  if (n === 10) return "Unicornio";
+  if (n >= 8)   return "Muy raro";
+  if (n >= 6)   return "Raro";
+  if (n >= 4)   return "Poco común";
+  if (n >= 2)   return "Común";
+  return "Muy común";
 };
 
 const timeAgo = (iso) => {
@@ -148,11 +150,12 @@ export default function MapView() {
       {/* Leyenda */}
       <div style={{ display: "flex", gap: 12, marginBottom: 16, overflowX: "auto", paddingBottom: 2 }}>
         {[
+          { color: "#C7C7CC", label: "Muy común" },
           { color: "#8E8E93", label: "Común" },
           { color: "#007AFF", label: "Poco común" },
-          { color: "#8B5CF6", label: "Raro" },
-          { color: "#F97316", label: "Muy raro" },
-          { color: "#F59E0B", label: "Unicornio" },
+          { color: "#F97316", label: "Raro" },
+          { color: "#BF5AF2", label: "Muy raro" },
+          { color: "#FF2D55", label: "Unicornio" },
         ].map(({ color, label }) => (
           <div key={label} style={{ display: "flex", alignItems: "center", gap: 5, flexShrink: 0 }}>
             <div style={{ width: 8, height: 8, borderRadius: "50%", background: color }} />
