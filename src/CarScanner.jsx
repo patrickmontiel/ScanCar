@@ -42,6 +42,11 @@ const IconBack = () => (
     <polyline points="11,4 6,9 11,14"/>
   </svg>
 );
+const IconTikTok = () => (
+  <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor">
+    <path d="M19.59 6.69a4.83 4.83 0 0 1-3.77-4.25V2h-3.45v13.67a2.89 2.89 0 0 1-2.88 2.5 2.89 2.89 0 0 1-2.89-2.89 2.89 2.89 0 0 1 2.89-2.89c.28 0 .54.04.79.1V9.01a6.27 6.27 0 0 0-.79-.05 6.34 6.34 0 0 0-6.34 6.34 6.34 6.34 0 0 0 6.34 6.34 6.34 6.34 0 0 0 6.33-6.34V8.69a8.18 8.18 0 0 0 4.77 1.52V6.77a4.85 4.85 0 0 1-1-.08z"/>
+  </svg>
+);
 const IconScanTab = () => (
   <svg width="22" height="22" viewBox="0 0 22 22" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round">
     <path d="M7 3H5a2 2 0 0 0-2 2v2M17 3h2a2 2 0 0 1 2 2v2M7 19H5a2 2 0 0 1-2-2v-2M17 19h2a2 2 0 0 0 2-2v-2"/>
@@ -205,6 +210,12 @@ const buildProfile = (cars) => {
 
   return tags.length > 0 ? tags : null;
 };
+
+// ── TikTok search query ──────────────────────────────────────────
+const buildTikTokQuery = (d) =>
+  [d.make, d.model, d.trim, d.year]
+    .filter(v => v && String(v).toLowerCase() !== "null" && String(v).trim())
+    .join(" ");
 
 // ── Data helpers ─────────────────────────────────────────────────
 const val = (v) =>
@@ -479,6 +490,26 @@ function CarSheet({ d, imageUrl, livePrice, priceFetching }) {
           * Estimaciones de mercado. Verifica con SEDEMA para holograma y tenencia exactos.
         </p>
       </div>
+
+      {/* TikTok */}
+      <div style={{ borderTop: `1px solid ${C.border}`, padding: "14px 20px" }}>
+        <a
+          href={`https://www.tiktok.com/search?q=${encodeURIComponent(buildTikTokQuery(d))}`}
+          target="_blank"
+          rel="noopener noreferrer"
+          style={{
+            display: "flex", alignItems: "center", justifyContent: "center", gap: 9,
+            background: "#010101", color: "#fff", borderRadius: r.lg, padding: "13px",
+            textDecoration: "none", fontSize: 14, fontWeight: 600, fontFamily: font,
+          }}
+        >
+          <IconTikTok />
+          Ver en TikTok
+        </a>
+        <p style={{ fontSize: 11, color: C.muted, textAlign: "center", margin: "8px 0 0" }}>
+          Videos de {d.make} {d.model}{d.year ? ` ${d.year}` : ""}
+        </p>
+      </div>
     </div>
   );
 }
@@ -508,6 +539,13 @@ export default function CarScanner() {
   const [confidence, setConfidence] = useState(null);
   const [questionCount, setQuestionCount] = useState(0);
   const [photoGPS, setPhotoGPS] = useState(null);
+  const [ownerMap, setOwnerMap] = useState({});
+  const [ownerSetupOpen, setOwnerSetupOpen] = useState(false);
+  const [ownerNotes, setOwnerNotes] = useState("");
+  const [ownerMods, setOwnerMods] = useState("");
+  const [ownerSaving, setOwnerSaving] = useState(false);
+  const [ownerScans, setOwnerScans] = useState(null);
+  const [ownerProfile, setOwnerProfile] = useState(null);
   const fileRef = useRef(null);
 
   useEffect(() => {
@@ -516,11 +554,25 @@ export default function CarScanner() {
       if (raw) setDb(JSON.parse(raw));
       const sc = localStorage.getItem(DB_KEY + "-count");
       if (sc) setScanCount(parseInt(sc, 10));
+      const om = localStorage.getItem("scancar-owner-v1");
+      if (om) setOwnerMap(JSON.parse(om));
     } catch (e) {}
     try {
       const params = new URLSearchParams(window.location.search);
       const carParam = params.get("car");
-      if (carParam) {
+      const ownerParam = params.get("owner");
+      if (ownerParam) {
+        setView("owner");
+        fetch("/api/owner", {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ id: ownerParam, increment: true }),
+        }).catch(() => {});
+        fetch(`/api/owner?id=${ownerParam}`)
+          .then(r => r.json())
+          .then(data => setOwnerProfile(data))
+          .catch(() => {});
+      } else if (carParam) {
         const raw = atob(decodeURIComponent(carParam));
         const bytes = Uint8Array.from(raw, c => c.charCodeAt(0));
         const car = JSON.parse(new TextDecoder().decode(bytes));
@@ -829,6 +881,29 @@ Calibración para México:
       setSightingStatus("error");
       setTimeout(() => setSightingStatus(null), 2500);
     }
+  };
+
+  const buildOwnerUrl = (profileId) => `${window.location.origin}/?owner=${profileId}`;
+
+  const createOwnerProfile = async (car) => {
+    setOwnerSaving(true);
+    try {
+      const r = await fetch("/api/owner", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ car_data: car, owner_notes: ownerNotes, mods: ownerMods }),
+      });
+      const data = await r.json();
+      const profileId = data.id;
+      setOwnerMap(prev => {
+        const next = { ...prev, [car.id]: profileId };
+        try { localStorage.setItem("scancar-owner-v1", JSON.stringify(next)); } catch (_) {}
+        return next;
+      });
+      setOwnerScans(0);
+      setOwnerSetupOpen(false);
+    } catch (e) {}
+    setOwnerSaving(false);
   };
 
   const buildQRUrl = (car) => {
@@ -1150,7 +1225,15 @@ Calibración para México:
                   return (
                     <button
                       key={d.id}
-                      onClick={() => { setSelectedCar(d); setLivePrice(null); setView("car-detail"); fetchPrice(d); }}
+                      onClick={() => {
+                        setSelectedCar(d); setLivePrice(null); setView("car-detail"); fetchPrice(d);
+                        setOwnerSetupOpen(false); setOwnerScans(null);
+                        const pid = ownerMap[d.id];
+                        if (pid) {
+                          fetch(`/api/owner?id=${pid}`).then(r => r.json())
+                            .then(data => setOwnerScans(data.scan_count ?? null)).catch(() => {});
+                        }
+                      }}
                       style={{ background: C.surface, border: `1px solid ${C.border}`, borderRadius: r.lg, padding: "10px 14px 10px 10px", display: "flex", alignItems: "center", cursor: "pointer", textAlign: "left", fontFamily: font, width: "100%", gap: 12 }}
                       onMouseEnter={e => e.currentTarget.style.background = C.accent}
                       onMouseLeave={e => e.currentTarget.style.background = C.surface}
@@ -1228,6 +1311,102 @@ Calibración para México:
             Eliminar del Garage
           </button>
         </div>
+
+        {/* Owner Mode */}
+        {(() => {
+          const profileId = ownerMap[selectedCar.id];
+          if (ownerSetupOpen) return (
+            <div style={{ marginTop: 12, background: C.surface, borderRadius: r.xl, border: `1px solid ${C.border}`, padding: 20 }}>
+              <p style={{ fontSize: 15, fontWeight: 700, color: C.fg, margin: "0 0 4px" }}>Owner Mode</p>
+              <p style={{ fontSize: 12, color: C.muted, margin: "0 0 18px" }}>Quien escanee tu QR verá esta ficha + tu historia</p>
+              <div style={{ marginBottom: 12 }}>
+                <p style={{ fontSize: 12, fontWeight: 600, color: C.muted, margin: "0 0 5px" }}>Tu historia con este coche</p>
+                <textarea
+                  value={ownerNotes}
+                  onChange={e => setOwnerNotes(e.target.value)}
+                  placeholder="¿Desde cuándo lo tienes? ¿Qué significa para ti?…"
+                  rows={3}
+                  style={{ width: "100%", border: `1.5px solid ${C.border}`, borderRadius: r.md, padding: "10px 12px", fontSize: 13, fontFamily: font, resize: "vertical", boxSizing: "border-box", color: C.fg, background: C.surface, outline: "none" }}
+                />
+              </div>
+              <div style={{ marginBottom: 18 }}>
+                <p style={{ fontSize: 12, fontWeight: 600, color: C.muted, margin: "0 0 5px" }}>Modificaciones</p>
+                <textarea
+                  value={ownerMods}
+                  onChange={e => setOwnerMods(e.target.value)}
+                  placeholder="Escape Akrapovic, ECU Stage 2, Rines Work…"
+                  rows={2}
+                  style={{ width: "100%", border: `1.5px solid ${C.border}`, borderRadius: r.md, padding: "10px 12px", fontSize: 13, fontFamily: font, resize: "vertical", boxSizing: "border-box", color: C.fg, background: C.surface, outline: "none" }}
+                />
+              </div>
+              <button
+                onClick={() => createOwnerProfile(selectedCar)}
+                disabled={ownerSaving}
+                style={{ width: "100%", background: ownerSaving ? C.border : C.primary, color: "#fff", border: "none", borderRadius: r.lg, padding: "13px", fontSize: 15, fontWeight: 600, cursor: ownerSaving ? "default" : "pointer", fontFamily: font, marginBottom: 8 }}
+              >
+                {ownerSaving ? "Guardando…" : "Crear perfil de propietario"}
+              </button>
+              <button onClick={() => setOwnerSetupOpen(false)} style={{ width: "100%", background: "transparent", color: C.muted, border: "none", borderRadius: r.lg, padding: "10px", fontSize: 13, cursor: "pointer", fontFamily: font }}>
+                Cancelar
+              </button>
+            </div>
+          );
+          if (profileId) {
+            const ownerUrl = buildOwnerUrl(profileId);
+            const qrSrc = `https://api.qrserver.com/v1/create-qr-code/?size=120x120&ecc=M&data=${encodeURIComponent(ownerUrl)}`;
+            return (
+              <div style={{ marginTop: 12, background: "#010101", borderRadius: r.xl, padding: 20 }}>
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 16 }}>
+                  <div>
+                    <p style={{ fontSize: 11, fontWeight: 700, letterSpacing: "0.08em", textTransform: "uppercase", color: "#ffffff50", margin: "0 0 4px" }}>Owner Mode activo</p>
+                    <p style={{ fontSize: 30, fontWeight: 800, color: "#fff", margin: "0 0 2px", lineHeight: 1, letterSpacing: "-0.03em" }}>
+                      {ownerScans != null ? ownerScans : "—"}
+                    </p>
+                    <p style={{ fontSize: 12, color: "#ffffff50", margin: 0 }}>escaneos de tu ficha</p>
+                  </div>
+                  <div style={{ background: "#fff", borderRadius: 10, padding: 6 }}>
+                    <img src={qrSrc} alt="QR" width={80} height={80} style={{ display: "block" }} />
+                  </div>
+                </div>
+                <div style={{ display: "flex", gap: 8 }}>
+                  <button
+                    onClick={() => {
+                      if (navigator.share) navigator.share({ title: `${selectedCar.make} ${selectedCar.model}`, url: ownerUrl });
+                      else navigator.clipboard.writeText(ownerUrl);
+                    }}
+                    style={{ flex: 1, background: "#ffffff18", color: "#fff", border: "1px solid #ffffff25", borderRadius: r.lg, padding: "11px", fontSize: 13, fontWeight: 600, cursor: "pointer", fontFamily: font }}
+                  >
+                    ↗ Compartir
+                  </button>
+                  <button
+                    onClick={async () => {
+                      const qrFullSrc = `https://api.qrserver.com/v1/create-qr-code/?size=400x400&ecc=M&data=${encodeURIComponent(ownerUrl)}`;
+                      const blob = await (await fetch(qrFullSrc)).blob();
+                      const objUrl = URL.createObjectURL(blob);
+                      const a = document.createElement("a");
+                      a.href = objUrl;
+                      a.download = `owner-${selectedCar.make}-${selectedCar.model}.png`.replace(/\s+/g, "-").toLowerCase();
+                      a.click();
+                      URL.revokeObjectURL(objUrl);
+                    }}
+                    style={{ flex: 1, background: "#ffffff18", color: "#fff", border: "1px solid #ffffff25", borderRadius: r.lg, padding: "11px", fontSize: 13, fontWeight: 600, cursor: "pointer", fontFamily: font }}
+                  >
+                    ↓ QR
+                  </button>
+                </div>
+              </div>
+            );
+          }
+          return (
+            <button
+              onClick={() => { setOwnerNotes(""); setOwnerMods(""); setOwnerSetupOpen(true); }}
+              style={{ width: "100%", marginTop: 12, background: "#010101", color: "#fff", border: "none", borderRadius: r.lg, padding: "13px", fontSize: 15, fontWeight: 600, cursor: "pointer", fontFamily: font }}
+            >
+              ★ Activar Owner Mode
+            </button>
+          );
+        })()}
+
         {renderQRModal(selectedCar)}
       </div>
     );
@@ -1327,14 +1506,66 @@ Calibración para México:
     );
   };
 
+  const renderOwnerPublic = () => {
+    if (!ownerProfile || !ownerProfile.car_data) return (
+      <div style={{ display: "flex", justifyContent: "center", alignItems: "center", height: "60vh", color: C.muted, fontFamily: font, fontSize: 14 }}>
+        Cargando perfil…
+      </div>
+    );
+    const car = ownerProfile.car_data;
+    const hasNotes = ownerProfile.owner_notes?.trim();
+    const hasMods = ownerProfile.mods?.trim();
+    return (
+      <div>
+        <div style={{ background: "#010101", borderRadius: r.xl, padding: "16px 20px", marginBottom: 16, display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+          <div>
+            <p style={{ fontSize: 11, fontWeight: 700, letterSpacing: "0.08em", textTransform: "uppercase", color: "#ffffff50", margin: "0 0 4px" }}>Owner Mode</p>
+            <p style={{ fontSize: 15, fontWeight: 700, color: "#fff", margin: 0 }}>
+              {ownerProfile.scan_count} persona{ownerProfile.scan_count !== 1 ? "s" : ""} escanearon esta ficha
+            </p>
+          </div>
+          <span style={{ fontSize: 30 }}>🏁</span>
+        </div>
+
+        <CarSheet d={car} imageUrl={car.photo} livePrice={null} priceFetching={false} />
+
+        {(hasNotes || hasMods) && (
+          <div style={{ marginTop: 12, background: C.surface, borderRadius: r.xl, border: `1px solid ${C.border}`, overflow: "hidden" }}>
+            {hasNotes && (
+              <div style={{ padding: "16px 20px", borderBottom: hasMods ? `1px solid ${C.border}` : "none" }}>
+                <p style={{ fontSize: 11, fontWeight: 600, letterSpacing: "0.07em", textTransform: "uppercase", color: C.muted, margin: "0 0 10px" }}>Historia del propietario</p>
+                <p style={{ fontSize: 14, lineHeight: 1.65, color: C.fg, margin: 0 }}>{ownerProfile.owner_notes}</p>
+              </div>
+            )}
+            {hasMods && (
+              <div style={{ padding: "16px 20px" }}>
+                <p style={{ fontSize: 11, fontWeight: 600, letterSpacing: "0.07em", textTransform: "uppercase", color: C.muted, margin: "0 0 10px" }}>Modificaciones</p>
+                <p style={{ fontSize: 14, lineHeight: 1.65, color: C.fg, margin: 0 }}>{ownerProfile.mods}</p>
+              </div>
+            )}
+          </div>
+        )}
+
+        <div style={{ marginTop: 12 }}>
+          <button
+            onClick={() => { setOwnerProfile(null); setView("scan"); window.history.replaceState({}, "", "/"); }}
+            style={{ width: "100%", background: C.primary, color: "#fff", border: "none", borderRadius: r.lg, padding: "13px", fontSize: 15, fontWeight: 600, cursor: "pointer", fontFamily: font }}
+          >
+            Identificar mi propio coche
+          </button>
+        </div>
+      </div>
+    );
+  };
+
   // ── Shell ─────────────────────────────────────────────────────
   const tabs = [
     { id: "scan", label: "Escanear", Icon: IconScanTab },
     { id: "gallery", label: "Garage", Icon: IconGarageTab },
     { id: "map", label: "Mapa", Icon: IconMapTab },
   ];
-  const activeTab = view === "car-detail" ? "gallery" : view;
-  const hideNav = view === "shared";
+  const activeTab = view === "car-detail" ? "gallery" : view === "owner" ? "scan" : view;
+  const hideNav = view === "shared" || view === "owner";
 
   return (
     <div style={{ minHeight: "100dvh", background: C.bg, fontFamily: font, letterSpacing: "-0.01em", WebkitFontSmoothing: "antialiased" }}>
@@ -1367,6 +1598,7 @@ Calibración para México:
         {view === "car-detail" && renderCarDetail()}
         {view === "map" && <MapView />}
         {view === "shared" && renderShared()}
+        {view === "owner" && renderOwnerPublic()}
       </div>
 
       {/* Bottom navigation */}
