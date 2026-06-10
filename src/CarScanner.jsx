@@ -493,19 +493,25 @@ function CarSheet({ d, imageUrl, livePrice, priceFetching }) {
 
       {/* TikTok */}
       <div style={{ borderTop: `1px solid ${C.border}`, padding: "14px 20px" }}>
-        <a
-          href={`https://www.tiktok.com/search?q=${encodeURIComponent(buildTikTokQuery(d))}`}
-          target="_blank"
-          rel="noopener noreferrer"
+        <button
+          onClick={() => {
+            const encoded = encodeURIComponent(buildTikTokQuery(d));
+            window.location.href = `tiktok://search?keyword=${encoded}`;
+            setTimeout(() => {
+              if (!document.hidden)
+                window.open(`https://www.tiktok.com/search?q=${encoded}`, "_blank");
+            }, 1500);
+          }}
           style={{
             display: "flex", alignItems: "center", justifyContent: "center", gap: 9,
             background: "#010101", color: "#fff", borderRadius: r.lg, padding: "13px",
-            textDecoration: "none", fontSize: 14, fontWeight: 600, fontFamily: font,
+            fontSize: 14, fontWeight: 600, fontFamily: font,
+            border: "none", cursor: "pointer", width: "100%",
           }}
         >
           <IconTikTok />
           Ver en TikTok
-        </a>
+        </button>
         <p style={{ fontSize: 11, color: C.muted, textAlign: "center", margin: "8px 0 0" }}>
           Videos de {d.make} {d.model}{d.year ? ` ${d.year}` : ""}
         </p>
