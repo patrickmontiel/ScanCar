@@ -454,11 +454,33 @@ function CarSheet({ d, imageUrl, livePrice, priceFetching }) {
         </div>
         {renderRows([
           ["Estatus", d.mexico_status],
-          ["Valor Libro Azul", d.libro_azul_estimate],
           ["Holograma CDMX", d.holograma],
           ["Tenencia", d.tenencia_note],
           ["Depreciación MX", d.depreciation_mx],
         ])}
+        {/* Libro Azul — compra y venta */}
+        {(hasVal(d.libro_azul_compra) || hasVal(d.libro_azul_venta) || hasVal(d.libro_azul_estimate)) && (
+          <div style={{ borderTop: `1px solid ${C.border}`, padding: "14px 20px" }}>
+            <p style={{ fontSize: 11, fontWeight: 600, letterSpacing: "0.07em", textTransform: "uppercase", color: C.muted, margin: "0 0 12px" }}>Libro Azul</p>
+            {(hasVal(d.libro_azul_compra) && hasVal(d.libro_azul_venta)) ? (
+              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
+                <div style={{ background: "#F0FFF4", border: "1px solid #34C75930", borderRadius: 12, padding: "12px 14px" }}>
+                  <p style={{ fontSize: 10, fontWeight: 700, letterSpacing: "0.07em", textTransform: "uppercase", color: C.green, margin: "0 0 4px" }}>Te compran</p>
+                  <p style={{ fontSize: 16, fontWeight: 700, color: C.fg, margin: 0 }}>{d.libro_azul_compra}</p>
+                  <p style={{ fontSize: 10, color: C.muted, margin: "3px 0 0" }}>Precio de compra</p>
+                </div>
+                <div style={{ background: "#FFF9F0", border: "1px solid #FF950030", borderRadius: 12, padding: "12px 14px" }}>
+                  <p style={{ fontSize: 10, fontWeight: 700, letterSpacing: "0.07em", textTransform: "uppercase", color: C.orange, margin: "0 0 4px" }}>Tú compras</p>
+                  <p style={{ fontSize: 16, fontWeight: 700, color: C.fg, margin: 0 }}>{d.libro_azul_venta}</p>
+                  <p style={{ fontSize: 10, color: C.muted, margin: "3px 0 0" }}>Precio de venta</p>
+                </div>
+              </div>
+            ) : (
+              <p style={{ fontSize: 14, color: C.fg, margin: 0 }}>{d.libro_azul_compra || d.libro_azul_venta || d.libro_azul_estimate}</p>
+            )}
+            <p style={{ fontSize: 11, color: C.muted, margin: "8px 0 0" }}>Condición: Bueno · librоazul.com.mx</p>
+          </div>
+        )}
         {hasVal(d.refacciones) && (
           <div style={{ padding: "11px 20px", borderTop: `1px solid ${C.border}` }}>
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
@@ -667,7 +689,8 @@ Solo cuando el candidato principal tiene ≥ ${CONFIDENCE_THRESHOLD}% de confian
     "celebrity_connection":"Piloto o celebridad verificable o null",
     "naming_origin":"Origen del nombre o null",
     "mexico_status":"Nacional / Importado-regularizable / Chocolate común / Raro en México / Clásico-coleccionable",
-    "libro_azul_estimate":"Estimación MXN condición Bueno. Para clásicos +30 años o >$50k USD: 'No aplica — clásico coleccionable.'",
+    "libro_azul_compra":"Precio de compra Libro Azul en MXN (lo que te pagarían por el coche), condición Bueno. Ej: '$185,000 MXN'. Para clásicos +30 años: 'No aplica — clásico coleccionable.'",
+    "libro_azul_venta":"Precio de venta Libro Azul en MXN (lo que pagarías por comprarlo), condición Bueno. Ej: '$210,000 MXN'. Para clásicos +30 años: 'No aplica — clásico coleccionable.'",
     "holograma":"Holograma CDMX: +30 años = EXENTO. 2000+ aplica 00/0/1/2.",
     "tenencia_note":"Nota tenencia por estado",
     "refacciones":"Excelente / Buena / Limitada / Difícil",
