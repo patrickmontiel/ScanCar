@@ -1,5 +1,6 @@
 import React, { useState, useRef, useEffect } from "react";
 import MapView from "./MapView";
+import exifr from "exifr";
 
 const CONFIDENCE_THRESHOLD = 90;
 const DB_KEY = "carnoceur-confirmados-v1";
@@ -371,6 +372,7 @@ function CarSheet({ d, imageUrl, livePrice, priceFetching }) {
       ]} />
       <Section title="Fiabilidad y potencial" fields={[
         ["Problemas conocidos", d.known_issues], ["Potencial de mod", d.mod_potential],
+        ["Servicio recomendado", d.service_interval],
       ]} />
 
       {/* Legado */}
@@ -456,10 +458,11 @@ function CarSheet({ d, imageUrl, livePrice, priceFetching }) {
         </div>
         {renderRows([
           ["Estatus", d.mexico_status],
-          ["Valor Libro Azul", d.libro_azul_estimate],
+          ["Valor estimado", d.libro_azul_estimate],
           ["Holograma CDMX", d.holograma],
           ["Tenencia", d.tenencia_note],
           ["Depreciación MX", d.depreciation_mx],
+          ["Agencias en México", d.dealers_in_mx],
         ])}
         {hasVal(d.refacciones) && (
           <div style={{ padding: "11px 20px", borderTop: `1px solid ${C.border}` }}>
@@ -473,7 +476,7 @@ function CarSheet({ d, imageUrl, livePrice, priceFetching }) {
           </div>
         )}
         <p style={{ fontSize: 11, color: C.muted, padding: "8px 20px 14px", margin: 0 }}>
-          * Estimaciones. Consulta Libro Azul oficial y SEDEMA para valores exactos.
+          * Estimaciones de mercado. Verifica con SEDEMA para holograma y tenencia exactos.
         </p>
       </div>
     </div>
@@ -504,6 +507,7 @@ export default function CarScanner() {
   const [sharedCar, setSharedCar] = useState(null);
   const [confidence, setConfidence] = useState(null);
   const [questionCount, setQuestionCount] = useState(0);
+  const [photoGPS, setPhotoGPS] = useState(null);
   const fileRef = useRef(null);
 
   useEffect(() => {
@@ -517,7 +521,9 @@ export default function CarScanner() {
       const params = new URLSearchParams(window.location.search);
       const carParam = params.get("car");
       if (carParam) {
-        const car = JSON.parse(atob(decodeURIComponent(carParam)));
+        const raw = atob(decodeURIComponent(carParam));
+        const bytes = Uint8Array.from(raw, c => c.charCodeAt(0));
+        const car = JSON.parse(new TextDecoder().decode(bytes));
         setSharedCar(car);
         setView("shared");
       }
@@ -602,6 +608,17 @@ Devuelve SIEMPRE y ÚNICAMENTE JSON válido, sin texto extra ni backticks.
 ══ REGLA DE ORO ══
 NUNCA adivines cuando hay ambigüedad. Una identificación incorrecta es peor que una pregunta.
 
+══ INSPECCIÓN VISUAL — HAZ ESTO PRIMERO ══
+Antes de formular candidatos, inspecciona meticulosamente la imagen:
+1. LOGO/EMBLEMA: ¿Es claramente visible en parrilla, cajuela o volante? Si sí → identifica la marca directamente sin preguntar.
+2. BADGE DE MODELO: ¿Hay letras o números visibles en la carrocería, cajuela o pilares? Léelos exactamente — son la respuesta.
+3. FAROS DELANTEROS: ¿Son completamente visibles en la foto? Analiza forma, firma LED, color de DRL, posición.
+4. PARRILLA: ¿Forma, barras, logotipo integrado, diseño característico?
+5. SILUETA GENERAL: ¿Sedán, SUV, coupé, hatchback, pickup, deportivo?
+Si el logo Y el badge de modelo son legibles → da resultado directo si confianza ≥ ${CONFIDENCE_THRESHOLD}%.
+Si los faros son completamente visibles → úsalos como dato, no los preguntes.
+Pregunta SOLO sobre detalles que NO puedas resolver mirando la imagen.
+
 ══ CUÁNDO PREGUNTAR (type:"question") ══
 Pregunta si se cumple CUALQUIERA de estas condiciones:
 1. Hay 2 o más candidatos con probabilidad ≥ 20%.
@@ -616,6 +633,8 @@ REGLAS DE LAS PREGUNTAS — CRÍTICO:
 • MAL: "¿Tiene chasis E46 o E90?" → BIEN: "¿Los faros delanteros son redondos o angulares y alargados?"
 • MAL: "¿Qué año es?" → BIEN: "¿El logotipo del frente tiene bordes cromados o es completamente negro?"
 • Máximo 4 opciones incluyendo "No lo sé".
+• NUNCA preguntes por el logo o marca si ya es visible en la foto — ya lo sabes.
+• NUNCA preguntes sobre faros si son completamente visibles — analízalos directamente.
 
 ══ CUÁNDO DAR RESULTADO DIRECTO (type:"result") ══
 Solo cuando el candidato principal tiene ≥ ${CONFIDENCE_THRESHOLD}% de confianza Y los demás candidatos tienen ≤ 10% cada uno.
@@ -669,14 +688,16 @@ Solo cuando el candidato principal tiene ≥ ${CONFIDENCE_THRESHOLD}% de confian
     "celebrity_connection":"Piloto o celebridad verificable o null",
     "naming_origin":"Origen del nombre o null",
     "mexico_status":"Nacional / Importado-regularizable / Chocolate común / Raro en México / Clásico-coleccionable",
-    "libro_azul_estimate":"Estimación MXN condición Bueno basada en mercado mexicano. Ej: '$185,000 MXN'. Para clásicos +30 años o >$50k USD: 'No aplica — clásico coleccionable.'",
+    "libro_azul_estimate":"Valor de mercado estimado en México, condición Bueno. Ej: '$185,000 MXN'. Para clásicos +30 años o >$50k USD: 'No aplica — coleccionable.'",
     "holograma":"Holograma CDMX: +30 años = EXENTO. 2000+ aplica 00/0/1/2.",
     "tenencia_note":"Nota tenencia por estado",
     "refacciones":"Excelente / Buena / Limitada / Difícil",
     "depreciation_mx":"Depreciación o apreciación en mercado MX",
     "rarity_score":<1-10 rareza en México: 1=ubicuo, 10=unicornio>,
     "rarity_label":"Común / Poco común / Raro / Muy raro / Unicornio en México",
-    "units_in_mx":"Estimación de unidades circulando (ej: '~45,000', '<500', 'Desconocido')"
+    "units_in_mx":"Estimación de unidades circulando (ej: '~45,000', '<500', 'Desconocido')",
+    "service_interval":"Intervalo de servicio del fabricante: tipo y frecuencia. Ej: 'Aceite cada 10,000 km o 12 meses; filtros cada 20,000 km; revisión mayor cada 60,000 km'. Incluye fluidos especiales si aplica.",
+    "dealers_in_mx":"Red de distribuidores en México: número y ciudades con presencia. Ej: 'Toyota: ~180 distribuidores en todo el país' o 'Ferrari: 2 agencias (CDMX y GDL)'. null si es importación paralela sin red oficial."
   }
 }
 
@@ -771,6 +792,7 @@ Calibración para México:
   const onFile = async (e) => {
     const file = e.target.files?.[0];
     if (!file) return;
+    try { setPhotoGPS(await exifr.gps(file) || null); } catch (_) { setPhotoGPS(null); }
     const { dataUrl, mediaType, b64 } = await resizeImage(file);
     setImageData(dataUrl);
     startAnalysis(b64, mediaType);
@@ -780,10 +802,17 @@ Calibración para México:
     if (!result) return;
     setSightingStatus("loading");
     try {
-      const pos = await new Promise((resolve, reject) =>
-        navigator.geolocation.getCurrentPosition(resolve, reject, { timeout: 10000 })
-      );
-      const { latitude: lat, longitude: lng } = pos.coords;
+      let lat, lng;
+      if (photoGPS?.latitude != null && photoGPS?.longitude != null) {
+        lat = photoGPS.latitude;
+        lng = photoGPS.longitude;
+      } else {
+        const pos = await new Promise((resolve, reject) =>
+          navigator.geolocation.getCurrentPosition(resolve, reject, { timeout: 10000 })
+        );
+        lat = pos.coords.latitude;
+        lng = pos.coords.longitude;
+      }
       await fetch("/api/sightings", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -803,20 +832,9 @@ Calibración para México:
   };
 
   const buildQRUrl = (car) => {
-    const minimal = {
-      make: car.make, model: car.model, year: car.year, trim: car.trim,
-      chassis_code: car.chassis_code, generation: car.generation, body_style: car.body_style,
-      horsepower: car.horsepower, engine_displacement: car.engine_displacement,
-      engine_config: car.engine_config, aspiration: car.aspiration,
-      torque: car.torque, zero_to_100: car.zero_to_100, top_speed: car.top_speed,
-      drivetrain: car.drivetrain, transmission: car.transmission,
-      rarity_score: car.rarity_score, rarity_label: car.rarity_label,
-      production_years: car.production_years, fun_fact: car.fun_fact,
-      movie_appearances: car.movie_appearances, mexico_status: car.mexico_status,
-      units_in_mx: car.units_in_mx,
-    };
-    const encoded = encodeURIComponent(btoa(JSON.stringify(minimal)));
-    return `${window.location.origin}/?car=${encoded}`;
+    const bytes = new TextEncoder().encode(JSON.stringify(car));
+    const b64 = btoa(Array.from(bytes, b => String.fromCharCode(b)).join(""));
+    return `${window.location.origin}/?car=${encodeURIComponent(b64)}`;
   };
 
   const shareResult = async (car, price) => {
@@ -845,7 +863,7 @@ Calibración para México:
     setErrorMsg(""); setFromCommunity(false); setSavedToGarage(false);
     setLivePrice(null); setPriceFetching(false); setSightingStatus(null);
     setShareStatus(null); setCustomAnswer("");
-    setConfidence(null); setQuestionCount(0);
+    setConfidence(null); setQuestionCount(0); setPhotoGPS(null);
     if (fileRef.current) fileRef.current.value = "";
   };
 

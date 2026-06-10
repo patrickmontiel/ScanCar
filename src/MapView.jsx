@@ -92,7 +92,7 @@ export default function MapView() {
         {[
           { value: sightings.length, label: "avistamientos", color: C.fg },
           { value: unique, label: "modelos únicos", color: C.fg },
-          { value: rare, label: "raros o más", color: "#F59E0B" },
+          { value: rare, label: "raros o más", color: "#F97316" },
         ].map(({ value, label, color }) => (
           <div key={label} style={{ background: C.surface, borderRadius: 14, border: `1px solid ${C.border}`, padding: "12px 10px", textAlign: "center" }}>
             <p style={{ fontSize: 24, fontWeight: 700, color, margin: 0, lineHeight: 1 }}>{value}</p>
