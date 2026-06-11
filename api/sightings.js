@@ -14,8 +14,10 @@ export default async function handler(req, res) {
 
   try {
     if (req.method === "GET") {
+      const { device_id } = req.query;
+      const filter = device_id ? `&device_id=eq.${encodeURIComponent(device_id)}` : "";
       const r = await fetch(
-        `${SUPABASE_URL}/rest/v1/sightings?select=*&order=created_at.desc&limit=500`,
+        `${SUPABASE_URL}/rest/v1/sightings?select=*&order=created_at.desc&limit=500${filter}`,
         { headers }
       );
       const data = await r.json();
@@ -23,14 +25,14 @@ export default async function handler(req, res) {
     }
 
     if (req.method === "POST") {
-      const { car_make, car_model, car_year, rarity_score, rarity_label, chassis_code, trim, lat, lng, car_data } = req.body;
+      const { car_make, car_model, car_year, rarity_score, rarity_label, chassis_code, trim, lat, lng, car_data, device_id } = req.body;
       if (!car_make || lat == null || lng == null) {
         return res.status(400).json({ error: "Faltan datos requeridos" });
       }
       const r = await fetch(`${SUPABASE_URL}/rest/v1/sightings`, {
         method: "POST",
         headers: { ...headers, Prefer: "return=representation" },
-        body: JSON.stringify({ car_make, car_model, car_year, rarity_score, rarity_label, chassis_code, trim, lat, lng, car_data: car_data || null }),
+        body: JSON.stringify({ car_make, car_model, car_year, rarity_score, rarity_label, chassis_code, trim, lat, lng, car_data: car_data || null, device_id: device_id || null }),
       });
       const data = await r.json();
       return res.status(200).json(data);

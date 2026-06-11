@@ -42,21 +42,21 @@ function InvalidateSize() {
   return null;
 }
 
-export default function MapView({ onViewCar }) {
+export default function MapView({ onViewCar, deviceId }) {
   const [sightings, setSightings] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [deleting, setDeleting] = useState(null);
 
   useEffect(() => {
-    fetch("/api/sightings")
+    const url = deviceId ? `/api/sightings?device_id=${encodeURIComponent(deviceId)}` : "/api/sightings";
+    fetch(url)
       .then(r => r.json())
       .then(data => { if (data.error) setError(data.error); else setSightings(data); setLoading(false); })
       .catch(() => { setError("No se pudo cargar el mapa"); setLoading(false); });
-  }, []);
+  }, [deviceId]);
 
   const deleteSighting = async (id) => {
-    if (!window.confirm("¿Eliminar este avistamiento?")) return;
     setDeleting(id);
     try {
       await fetch("/api/sightings", {

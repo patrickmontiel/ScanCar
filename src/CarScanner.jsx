@@ -42,11 +42,6 @@ const IconBack = () => (
     <polyline points="11,4 6,9 11,14"/>
   </svg>
 );
-const IconTikTok = () => (
-  <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor">
-    <path d="M19.59 6.69a4.83 4.83 0 0 1-3.77-4.25V2h-3.45v13.67a2.89 2.89 0 0 1-2.88 2.5 2.89 2.89 0 0 1-2.89-2.89 2.89 2.89 0 0 1 2.89-2.89c.28 0 .54.04.79.1V9.01a6.27 6.27 0 0 0-.79-.05 6.34 6.34 0 0 0-6.34 6.34 6.34 6.34 0 0 0 6.34 6.34 6.34 6.34 0 0 0 6.33-6.34V8.69a8.18 8.18 0 0 0 4.77 1.52V6.77a4.85 4.85 0 0 1-1-.08z"/>
-  </svg>
-);
 const IconScanTab = () => (
   <svg width="22" height="22" viewBox="0 0 22 22" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round">
     <path d="M7 3H5a2 2 0 0 0-2 2v2M17 3h2a2 2 0 0 1 2 2v2M7 19H5a2 2 0 0 1-2-2v-2M17 19h2a2 2 0 0 0 2-2v-2"/>
@@ -211,11 +206,6 @@ const buildProfile = (cars) => {
   return tags.length > 0 ? tags : null;
 };
 
-// ── TikTok search query ──────────────────────────────────────────
-const buildTikTokQuery = (d) =>
-  [d.make, d.model, d.trim, d.year]
-    .filter(v => v && String(v).toLowerCase() !== "null" && String(v).trim())
-    .join(" ");
 
 // ── Data helpers ─────────────────────────────────────────────────
 const val = (v) =>
@@ -491,29 +481,6 @@ function CarSheet({ d, imageUrl, livePrice, priceFetching }) {
         </p>
       </div>
 
-      {/* TikTok */}
-      <div style={{ borderTop: `1px solid ${C.border}`, padding: "14px 20px" }}>
-        <button
-          onClick={() => {
-            window.open(
-              `https://www.tiktok.com/search?q=${encodeURIComponent(buildTikTokQuery(d))}`,
-              "_blank", "noopener,noreferrer"
-            );
-          }}
-          style={{
-            display: "flex", alignItems: "center", justifyContent: "center", gap: 9,
-            background: "#010101", color: "#fff", borderRadius: r.lg, padding: "13px",
-            fontSize: 14, fontWeight: 600, fontFamily: font,
-            border: "none", cursor: "pointer", width: "100%",
-          }}
-        >
-          <IconTikTok />
-          Ver en TikTok
-        </button>
-        <p style={{ fontSize: 11, color: C.muted, textAlign: "center", margin: "8px 0 0" }}>
-          Videos de {d.make} {d.model}{d.year ? ` ${d.year}` : ""}
-        </p>
-      </div>
     </div>
   );
 }
@@ -554,6 +521,14 @@ export default function CarScanner() {
   const [ownerProfile, setOwnerProfile] = useState(null);
   const fileRef = useRef(null);
   const pressRef = useRef(null);
+  const [deviceId] = useState(() => {
+    let id = localStorage.getItem("scancar-device-id");
+    if (!id) {
+      id = "d-" + Math.random().toString(36).slice(2) + Date.now().toString(36);
+      localStorage.setItem("scancar-device-id", id);
+    }
+    return id;
+  });
 
   useEffect(() => {
     try {
@@ -612,7 +587,6 @@ export default function CarScanner() {
       return next;
     });
     setSavedToGarage(true);
-    setTimeout(() => reset(), 1800);
   };
 
   const deleteFromDb = (id) => {
@@ -909,7 +883,7 @@ Calibración para México:
           car_make: result.make, car_model: result.model,
           car_year: result.year, rarity_score: result.rarity_score,
           rarity_label: result.rarity_label, chassis_code: result.chassis_code,
-          trim: result.trim, lat, lng, car_data: result,
+          trim: result.trim, lat, lng, car_data: result, device_id: deviceId,
         }),
       });
       setSightingStatus("done");
@@ -951,10 +925,11 @@ Calibración para México:
   const createOwnerProfile = async (car) => {
     setOwnerSaving(true);
     try {
+      const { photo: _photo, ...carDataClean } = car;
       const r = await fetch("/api/owner", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ car_data: car, owner_notes: ownerNotes, mods: ownerMods }),
+        body: JSON.stringify({ car_data: carDataClean, owner_notes: ownerNotes, mods: ownerMods }),
       });
       const data = await r.json();
       const profileId = data.id;
@@ -977,19 +952,18 @@ Calibración para México:
 
   const shareResult = async (car, price) => {
     const score = Number(car.rarity_score) || 0;
-    const filled = Math.round(score / 10 * 8);
-    const bar = "█".repeat(filled) + "░".repeat(8 - filled);
-    let text = `🚗 ${car.make} ${car.model}${car.year ? ` ${car.year}` : ""}`;
+    let text = `${car.make} ${car.model}${car.year ? ` ${car.year}` : ""}`;
     if (car.trim && String(car.trim).toLowerCase() !== "null") text += ` · ${car.trim}`;
-    if (score) text += `\n\n⭐ ${car.rarity_label || getRarityLabel(score)} (${score}/10)\n${bar}`;
-    if (car.horsepower && String(car.horsepower).toLowerCase() !== "null") text += `\n💪 ${car.horsepower}`;
-    if (car.zero_to_100 && String(car.zero_to_100).toLowerCase() !== "null") text += `\n⚡ 0-100: ${addUnit(car.zero_to_100, " s")}`;
-    if (price?.count > 0) text += `\n💰 ~$${price.median.toLocaleString("es-MX")} MXN en MercadoLibre`;
+    if (score) text += ` · ${car.rarity_label || getRarityLabel(score)} ${score}/10`;
+    if (car.horsepower && String(car.horsepower).toLowerCase() !== "null") text += `\n${car.horsepower}`;
+    if (car.engine_displacement && String(car.engine_displacement).toLowerCase() !== "null") text += ` · ${car.engine_displacement}`;
+    if (car.zero_to_100 && String(car.zero_to_100).toLowerCase() !== "null") text += `\n0-100: ${addUnit(car.zero_to_100, " s")}`;
+    if (price?.count > 0) text += `\n~$${price.median.toLocaleString("es-MX")} MXN en MercadoLibre`;
     if (car.fun_fact && String(car.fun_fact).toLowerCase() !== "null") text += `\n\n"${car.fun_fact}"`;
-    text += "\n\n📱 Escaneado con ScanCar";
+    const url = buildQRUrl(car);
     try {
-      if (navigator.share) { await navigator.share({ text }); }
-      else { await navigator.clipboard.writeText(text); }
+      if (navigator.share) { await navigator.share({ title: `${car.make} ${car.model}`, text, url }); }
+      else { await navigator.clipboard.writeText(url); }
       setShareStatus("done");
     } catch (e) { setShareStatus("error"); }
     setTimeout(() => setShareStatus(null), 2500);
@@ -1725,7 +1699,7 @@ Calibración para México:
         )}
         {view === "gallery" && renderGallery()}
         {view === "car-detail" && renderCarDetail()}
-        {view === "map" && <MapView onViewCar={viewSightingCar} />}
+        {view === "map" && <MapView onViewCar={viewSightingCar} deviceId={deviceId} />}
         {view === "shared" && renderShared()}
         {view === "owner" && renderOwnerPublic()}
       </div>
