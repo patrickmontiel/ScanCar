@@ -71,6 +71,17 @@ const IconCompare = () => (
     <path d="M5 2v12M11 2v12M2 5l3-3 3 3M10 11l3 3 3-3"/>
   </svg>
 );
+const IconTarget = () => (
+  <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+    <circle cx="12" cy="12" r="9"/>
+    <circle cx="12" cy="12" r="5"/>
+    <circle cx="12" cy="12" r="1.2" fill="currentColor"/>
+    <line x1="12" y1="1" x2="12" y2="4"/>
+    <line x1="12" y1="20" x2="12" y2="23"/>
+    <line x1="1" y1="12" x2="4" y2="12"/>
+    <line x1="20" y1="12" x2="23" y2="12"/>
+  </svg>
+);
 
 const Spinner = () => (
   <div style={{ display: "flex", gap: 6, justifyContent: "center", alignItems: "center" }}>
@@ -228,8 +239,8 @@ const XP_BY_RARITY = (score) => {
   return 10;
 };
 
-const calcXP = (db, scanCount, sightingsCount) => {
-  let xp = (scanCount || 0) * 5 + (sightingsCount || 0) * 15;
+const calcXP = (db, scanCount, sightingsCount, huntCount) => {
+  let xp = (scanCount || 0) * 5 + (sightingsCount || 0) * 15 + (huntCount || 0) * 10;
   db.forEach(d => {
     xp += XP_BY_RARITY(d.rarity_score);
     xp += Math.max(0, (d.confirmations || 1) - 1) * 5;
@@ -304,6 +315,9 @@ const ACHIEVEMENTS = [
   { id: "leyenda-jdm", category: "especiales", icon: "🇯🇵", title: "Leyenda JDM", desc: "5 autos japoneses en tu Garage", check: ctx => ctx.db.filter(d => getOrigin(d.make).label === "Japonés").length >= 5 },
   { id: "racha-7", category: "especiales", icon: "🔥", title: "Racha de 7 días", desc: "Escanea 7 días seguidos", check: ctx => ctx.streak.current >= 7 },
   { id: "primer-avistamiento", category: "descubrimiento", icon: "📍", title: "Primer Avistamiento", desc: "Registra un avistamiento en el mapa", check: ctx => ctx.sightingsCount >= 1 },
+  { id: "primera-caza", category: "cazador", icon: "🎯", title: "Primera Caza", desc: "Captura un coche en vivo con la cámara", check: ctx => ctx.huntCount >= 1 },
+  { id: "cazas-10", category: "cazador", icon: "🏕️", title: "Cazador de Campo", desc: "10 capturas en vivo", check: ctx => ctx.huntCount >= 10 },
+  { id: "cazas-50", category: "cazador", icon: "🌍", title: "Explorador Mundial", desc: "50 capturas en vivo — tu álbum va tomando forma", check: ctx => ctx.huntCount >= 50 },
 ];
 
 // ── Data helpers ─────────────────────────────────────────────────
@@ -628,6 +642,8 @@ export default function CarScanner() {
   const [ownerProfile, setOwnerProfile] = useState(null);
   const [streak, setStreak] = useState({ current: 0, lastDate: null, days: [] });
   const [sightingsCount, setSightingsCount] = useState(0);
+  const [huntCount, setHuntCount] = useState(0);
+  const [isHuntMode, setIsHuntMode] = useState(false);
   const [compareMode, setCompareMode] = useState(false);
   const [compareSelection, setCompareSelection] = useState([]);
   const [achCategory, setAchCategory] = useState("todos");
@@ -653,6 +669,8 @@ export default function CarScanner() {
       setStreak(loadStreak());
       const sgc = localStorage.getItem("scancar-sightings-count");
       if (sgc) setSightingsCount(parseInt(sgc, 10));
+      const hc = localStorage.getItem("scancar-hunt-count");
+      if (hc) setHuntCount(parseInt(hc, 10));
     } catch (e) {}
     try {
       const params = new URLSearchParams(window.location.search);
@@ -686,6 +704,14 @@ export default function CarScanner() {
       return next;
     });
     setStreak(bumpStreak());
+  };
+
+  const bumpHunt = () => {
+    setHuntCount(n => {
+      const next = n + 1;
+      try { localStorage.setItem("scancar-hunt-count", String(next)); } catch (e) {}
+      return next;
+    });
   };
 
   const saveToDb = (car) => {
@@ -907,7 +933,7 @@ Calibración para México:
 }${known}`;
   };
 
-  const startAnalysis = async (b64, mediaType) => {
+  const startAnalysis = async (b64, mediaType, hunt = false, gps = null) => {
     setStage("analyzing"); setErrorMsg(""); setFromCommunity(false);
     setSavedToGarage(false); setLivePrice(null);
     bumpScan();
@@ -921,14 +947,14 @@ Calibración para México:
     try {
       const parsed = await callAPI(messages);
       setHistory([...messages, { role: "assistant", content: JSON.stringify(parsed) }]);
-      handleParsed(parsed);
+      handleParsed(parsed, 0, hunt, gps);
     } catch (e) {
       setErrorMsg(e.message || "No pude leer la respuesta. Intenta con otra foto.");
       setStage("error");
     }
   };
 
-  const handleParsed = (parsed, qCount = 0) => {
+  const handleParsed = (parsed, qCount = 0, hunt = isHuntMode, gps = photoGPS) => {
     if (parsed.type === "result") {
       setResult(parsed.car);
       setFromCommunity(!!parsed.fromCommunity);
@@ -936,6 +962,10 @@ Calibración para México:
       setQuestionCount(qCount);
       setStage("result");
       fetchPrice(parsed.car);
+      if (hunt) {
+        bumpHunt();
+        logSighting(parsed.car, gps);
+      }
     } else if (parsed.type === "question") {
       setCandidates(parsed.candidates || []);
       setQuestion(parsed);
@@ -960,31 +990,43 @@ Calibración para México:
     }
   };
 
-  const onFile = async (e) => {
+  const onFile = async (e, hunt = false) => {
     const file = e.target.files?.[0];
     if (!file) return;
+    setIsHuntMode(hunt);
+    let gps = null;
     try {
       // exifr.gps() falla silenciosamente en HEIC/algunos JPEG; parse() es más robusto
       const exifData = await exifr.parse(file, { gps: true, tiff: false });
-      setPhotoGPS(
-        exifData?.latitude != null && exifData?.longitude != null
-          ? { latitude: exifData.latitude, longitude: exifData.longitude }
-          : null
-      );
-    } catch (_) { setPhotoGPS(null); }
+      if (exifData?.latitude != null && exifData?.longitude != null) {
+        gps = { latitude: exifData.latitude, longitude: exifData.longitude };
+      }
+    } catch (_) {}
+    if (!gps && hunt && navigator.geolocation) {
+      // Las capturas en vivo casi nunca traen GPS en EXIF: usamos la ubicación del dispositivo
+      try {
+        const pos = await new Promise((resolve, reject) =>
+          navigator.geolocation.getCurrentPosition(resolve, reject, { timeout: 8000 })
+        );
+        gps = { latitude: pos.coords.latitude, longitude: pos.coords.longitude };
+      } catch (_) {}
+    }
+    setPhotoGPS(gps);
     const { dataUrl, mediaType, b64 } = await resizeImage(file);
     setImageData(dataUrl);
-    startAnalysis(b64, mediaType);
+    startAnalysis(b64, mediaType, hunt, gps);
   };
 
-  const logSighting = async () => {
-    if (!result) return;
+  const logSighting = async (carOverride, gpsOverride) => {
+    const car = carOverride || result;
+    if (!car) return;
     setSightingStatus("loading");
     try {
+      const gps = gpsOverride !== undefined ? gpsOverride : photoGPS;
       let lat, lng;
-      if (photoGPS?.latitude != null && photoGPS?.longitude != null) {
-        lat = photoGPS.latitude;
-        lng = photoGPS.longitude;
+      if (gps?.latitude != null && gps?.longitude != null) {
+        lat = gps.latitude;
+        lng = gps.longitude;
       } else {
         const pos = await new Promise((resolve, reject) =>
           navigator.geolocation.getCurrentPosition(resolve, reject, { timeout: 10000 })
@@ -996,10 +1038,10 @@ Calibración para México:
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          car_make: result.make, car_model: result.model,
-          car_year: result.year, rarity_score: result.rarity_score,
-          rarity_label: result.rarity_label, chassis_code: result.chassis_code,
-          trim: result.trim, lat, lng, car_data: result, device_id: deviceId,
+          car_make: car.make, car_model: car.model,
+          car_year: car.year, rarity_score: car.rarity_score,
+          rarity_label: car.rarity_label, chassis_code: car.chassis_code,
+          trim: car.trim, lat, lng, car_data: car, device_id: deviceId,
         }),
       });
       setSightingStatus("done");
@@ -1097,13 +1139,14 @@ Calibración para México:
     setLivePrice(null); setPriceFetching(false); setSightingStatus(null);
     setShareStatus(null); setCustomAnswer("");
     setConfidence(null); setQuestionCount(0); setPhotoGPS(null);
+    setIsHuntMode(false);
     if (fileRef.current) fileRef.current.value = "";
   };
 
   // ── Views ────────────────────────────────────────────────────
 
   const renderHomeExtras = () => {
-    const xp = calcXP(db, scanCount, sightingsCount);
+    const xp = calcXP(db, scanCount, sightingsCount, huntCount);
     const lvl = getLevelInfo(xp);
     const uniqueModels = new Set(db.map(d => `${d.make}|${d.model}`)).size;
     const raros = db.filter(d => Number(d.rarity_score) >= 6).length;
@@ -1167,24 +1210,48 @@ Calibración para México:
   };
 
   const renderScanArea = () => (
-    <label style={{ display: "block", cursor: "pointer" }}>
-      <div style={{ background: C.surface, border: `1.5px dashed ${C.border}`, borderRadius: r.xl, padding: "48px 24px", textAlign: "center" }}>
-        <div style={{ width: 64, height: 64, borderRadius: "50%", background: C.accent, display: "flex", alignItems: "center", justifyContent: "center", margin: "0 auto 16px", color: C.muted }}>
-          <IconCamera />
+    <div>
+      {/* Cazar: captura en vivo, va al registro de avistamientos */}
+      <label style={{ display: "block", cursor: "pointer", marginBottom: 12 }}>
+        <div style={{ background: "linear-gradient(135deg, #1D1D1F, #38383A)", borderRadius: r.xl, padding: "32px 24px", textAlign: "center" }}>
+          <div style={{ width: 60, height: 60, borderRadius: "50%", background: "rgba(255,255,255,0.12)", display: "flex", alignItems: "center", justifyContent: "center", margin: "0 auto 14px", color: "#fff" }}>
+            <IconTarget />
+          </div>
+          <p style={{ fontSize: 17, fontWeight: 700, color: "#fff", margin: "0 0 6px" }}>Cazar coche</p>
+          <p style={{ fontSize: 13, color: "rgba(255,255,255,0.62)", margin: 0 }}>Captura en vivo · suma a tu colección y tu nivel</p>
+          <div style={{ display: "inline-flex", alignItems: "center", gap: 6, marginTop: 20, background: "#fff", color: "#1D1D1F", borderRadius: r.pill, padding: "10px 22px", fontSize: 14, fontWeight: 600 }}>
+            Abrir cámara
+          </div>
         </div>
-        <p style={{ fontSize: 17, fontWeight: 600, color: C.fg, margin: "0 0 6px" }}>Fotografía un coche</p>
-        <p style={{ fontSize: 13, color: C.muted, margin: 0 }}>Frontal o 3/4 · JPG, HEIC, PNG</p>
-        <div style={{ display: "inline-flex", alignItems: "center", gap: 6, marginTop: 20, background: C.primary, color: "#fff", borderRadius: r.pill, padding: "10px 22px", fontSize: 14, fontWeight: 600 }}>
-          Seleccionar foto
+        <input type="file" accept="image/*" capture="environment" onChange={(e) => onFile(e, true)} style={{ display: "none" }} />
+      </label>
+
+      {/* Subir foto: día a día, desde galería */}
+      <label style={{ display: "block", cursor: "pointer" }}>
+        <div style={{ background: C.surface, border: `1.5px dashed ${C.border}`, borderRadius: r.xl, padding: "28px 24px", textAlign: "center" }}>
+          <div style={{ width: 48, height: 48, borderRadius: "50%", background: C.accent, display: "flex", alignItems: "center", justifyContent: "center", margin: "0 auto 12px", color: C.muted }}>
+            <IconCamera />
+          </div>
+          <p style={{ fontSize: 15, fontWeight: 600, color: C.fg, margin: "0 0 4px" }}>Subir foto</p>
+          <p style={{ fontSize: 12, color: C.muted, margin: 0 }}>Del día a día, desde tu galería · JPG, HEIC, PNG</p>
         </div>
-      </div>
-      <input ref={fileRef} type="file" accept="image/*" onChange={onFile} style={{ display: "none" }} />
-    </label>
+        <input ref={fileRef} type="file" accept="image/*" onChange={(e) => onFile(e, false)} style={{ display: "none" }} />
+      </label>
+    </div>
   );
 
   const renderAnalyzing = () => (
     <div style={{ background: C.surface, borderRadius: r.xl, overflow: "hidden", border: `1px solid ${C.border}` }}>
-      {imageData && <img src={imageData} alt="coche" style={{ width: "100%", display: "block", maxHeight: 260, objectFit: "cover" }} />}
+      {imageData && (
+        <div style={{ position: "relative" }}>
+          <img src={imageData} alt="coche" style={{ width: "100%", display: "block", maxHeight: 260, objectFit: "cover" }} />
+          {isHuntMode && (
+            <span style={{ position: "absolute", top: 12, left: 12, display: "flex", alignItems: "center", gap: 5, background: "rgba(29,29,31,0.75)", color: "#fff", fontSize: 11, fontWeight: 700, borderRadius: r.pill, padding: "5px 10px" }}>
+              🎯 Caza en vivo
+            </span>
+          )}
+        </div>
+      )}
       <div style={{ padding: "24px", textAlign: "center" }}>
         <Spinner />
         <p style={{ fontSize: 13, color: C.muted, marginTop: 12 }}>Analizando — puede preguntar antes de responder…</p>
@@ -1269,8 +1336,13 @@ Calibración para México:
     return (
     <div>
       {imageData && (
-        <div style={{ borderRadius: r.xl, overflow: "hidden", marginBottom: 12, border: `1px solid ${C.border}` }}>
+        <div style={{ borderRadius: r.xl, overflow: "hidden", marginBottom: 12, border: `1px solid ${C.border}`, position: "relative" }}>
           <img src={imageData} alt="coche" style={{ width: "100%", display: "block", maxHeight: 220, objectFit: "cover" }} />
+          {isHuntMode && (
+            <span style={{ position: "absolute", top: 12, left: 12, display: "flex", alignItems: "center", gap: 5, background: "rgba(29,29,31,0.75)", color: "#fff", fontSize: 11, fontWeight: 700, borderRadius: r.pill, padding: "5px 10px" }}>
+              🎯 Caza en vivo · +10 XP
+            </span>
+          )}
         </div>
       )}
       {confidence != null && (
@@ -1646,18 +1718,19 @@ Calibración para México:
   };
 
   const renderProfile = () => {
-    const xp = calcXP(db, scanCount, sightingsCount);
+    const xp = calcXP(db, scanCount, sightingsCount, huntCount);
     const lvl = getLevelInfo(xp);
     const title = getLevelTitle(lvl.level);
     const unicornios = db.filter(d => Number(d.rarity_score) === 10).length;
     const raros = db.filter(d => Number(d.rarity_score) >= 6).length;
     const week = weekDays();
     const today = todayStr();
-    const ctx = { db, scanCount, streak, sightingsCount };
+    const ctx = { db, scanCount, streak, sightingsCount, huntCount };
     const cats = [
       { id: "todos", label: "Todos" },
       { id: "coleccion", label: "Colección" },
       { id: "descubrimiento", label: "Descubrimiento" },
+      { id: "cazador", label: "Cazador" },
       { id: "especiales", label: "Especiales" },
     ];
     const filtered = achCategory === "todos" ? ACHIEVEMENTS : ACHIEVEMENTS.filter(a => a.category === achCategory);
