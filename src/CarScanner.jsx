@@ -60,6 +60,17 @@ const IconMapTab = () => (
     <circle cx="11" cy="7" r="2"/>
   </svg>
 );
+const IconProfileTab = () => (
+  <svg width="22" height="22" viewBox="0 0 22 22" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round">
+    <circle cx="11" cy="7" r="4"/>
+    <path d="M3 19c0-3.5 3.5-6 8-6s8 2.5 8 6"/>
+  </svg>
+);
+const IconCompare = () => (
+  <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+    <path d="M5 2v12M11 2v12M2 5l3-3 3 3M10 11l3 3 3-3"/>
+  </svg>
+);
 
 const Spinner = () => (
   <div style={{ display: "flex", gap: 6, justifyContent: "center", alignItems: "center" }}>
@@ -206,10 +217,106 @@ const buildProfile = (cars) => {
   return tags.length > 0 ? tags : null;
 };
 
+// ── Gamificación: XP / Niveles ────────────────────────────────────
+const XP_BY_RARITY = (score) => {
+  const n = Number(score) || 0;
+  if (n === 10) return 250;
+  if (n >= 8) return 120;
+  if (n >= 6) return 60;
+  if (n >= 4) return 30;
+  if (n >= 2) return 15;
+  return 10;
+};
+
+const calcXP = (db, scanCount, sightingsCount) => {
+  let xp = (scanCount || 0) * 5 + (sightingsCount || 0) * 15;
+  db.forEach(d => {
+    xp += XP_BY_RARITY(d.rarity_score);
+    xp += Math.max(0, (d.confirmations || 1) - 1) * 5;
+  });
+  return xp;
+};
+
+const getLevelInfo = (xp) => {
+  let level = 1, cumulative = 0, need = 500;
+  while (xp >= cumulative + need) {
+    cumulative += need;
+    level++;
+    need = level * 500;
+  }
+  return { level, current: xp - cumulative, needed: need, pct: Math.min(100, Math.round((xp - cumulative) / need * 100)) };
+};
+
+const LEVEL_TITLES = [
+  [1, "Novato"], [5, "Aficionado"], [10, "Conocedor"], [15, "Coleccionista"],
+  [20, "Coleccionista Experto"], [25, "Maestro Automotriz"], [30, "Leyenda Viviente"],
+];
+const getLevelTitle = (level) => {
+  let title = LEVEL_TITLES[0][1];
+  for (const [min, t] of LEVEL_TITLES) if (level >= min) title = t;
+  return title;
+};
+
+// ── Racha diaria ───────────────────────────────────────────────────
+const STREAK_KEY = "scancar-streak-v1";
+const todayStr = () => new Date().toISOString().slice(0, 10);
+const loadStreak = () => {
+  try {
+    const raw = localStorage.getItem(STREAK_KEY);
+    if (raw) return JSON.parse(raw);
+  } catch (e) {}
+  return { current: 0, lastDate: null, days: [] };
+};
+const bumpStreak = () => {
+  const s = loadStreak();
+  const today = todayStr();
+  if (s.lastDate === today) return s;
+  const diff = s.lastDate ? Math.round((new Date(today) - new Date(s.lastDate)) / 86400000) : null;
+  s.current = diff === 1 ? s.current + 1 : 1;
+  s.lastDate = today;
+  s.days = [...new Set([...(s.days || []), today])].slice(-30);
+  try { localStorage.setItem(STREAK_KEY, JSON.stringify(s)); } catch (e) {}
+  return s;
+};
+const weekDays = () => {
+  const labels = ["D", "L", "M", "M", "J", "V", "S"];
+  const out = [];
+  const now = new Date();
+  for (let i = 6; i >= 0; i--) {
+    const d = new Date(now);
+    d.setDate(now.getDate() - i);
+    out.push({ label: labels[d.getDay()], date: d.toISOString().slice(0, 10) });
+  }
+  return out;
+};
+
+// ── Logros ───────────────────────────────────────────────────────
+const ACHIEVEMENTS = [
+  { id: "first-scan", category: "descubrimiento", icon: "🔍", title: "Primer Escaneo", desc: "Escanea tu primer coche", check: ctx => ctx.scanCount >= 1 },
+  { id: "scans-25", category: "descubrimiento", icon: "📸", title: "25 Escaneos", desc: "Acumula 25 escaneos", check: ctx => ctx.scanCount >= 25 },
+  { id: "first-car", category: "coleccion", icon: "🚗", title: "Primer Auto", desc: "Agrega tu primer auto al Garage", check: ctx => ctx.db.length >= 1 },
+  { id: "cars-10", category: "coleccion", icon: "🅿️", title: "10 Autos", desc: "Colecciona 10 autos", check: ctx => ctx.db.length >= 10 },
+  { id: "cars-50", category: "coleccion", icon: "🏆", title: "50 Autos", desc: "Colecciona 50 autos", check: ctx => ctx.db.length >= 50 },
+  { id: "first-raro", category: "descubrimiento", icon: "⭐", title: "Primer Raro", desc: "Encuentra un coche raro o más", check: ctx => ctx.db.some(d => Number(d.rarity_score) >= 6) },
+  { id: "first-muy-raro", category: "descubrimiento", icon: "💎", title: "Primer Muy Raro", desc: "Encuentra un coche muy raro", check: ctx => ctx.db.some(d => Number(d.rarity_score) >= 8) },
+  { id: "first-unicornio", category: "especiales", icon: "🦄", title: "Primer Unicornio", desc: "Encuentra un unicornio 10/10", check: ctx => ctx.db.some(d => Number(d.rarity_score) === 10) },
+  { id: "puro-aleman", category: "especiales", icon: "🇩🇪", title: "Purista Alemán", desc: "5 autos alemanes en tu Garage", check: ctx => ctx.db.filter(d => getOrigin(d.make).label === "Alemán").length >= 5 },
+  { id: "leyenda-jdm", category: "especiales", icon: "🇯🇵", title: "Leyenda JDM", desc: "5 autos japoneses en tu Garage", check: ctx => ctx.db.filter(d => getOrigin(d.make).label === "Japonés").length >= 5 },
+  { id: "racha-7", category: "especiales", icon: "🔥", title: "Racha de 7 días", desc: "Escanea 7 días seguidos", check: ctx => ctx.streak.current >= 7 },
+  { id: "primer-avistamiento", category: "descubrimiento", icon: "📍", title: "Primer Avistamiento", desc: "Registra un avistamiento en el mapa", check: ctx => ctx.sightingsCount >= 1 },
+];
 
 // ── Data helpers ─────────────────────────────────────────────────
 const val = (v) =>
   (v != null && v !== "" && String(v).toLowerCase() !== "null") ? v : "—";
+
+const timeAgoMs = (ms) => {
+  const diff = (Date.now() - ms) / 1000;
+  if (diff < 60) return "ahora";
+  if (diff < 3600) return `hace ${Math.floor(diff / 60)} min`;
+  if (diff < 86400) return `hace ${Math.floor(diff / 3600)} h`;
+  return `hace ${Math.floor(diff / 86400)} días`;
+};
 
 const renderRows = (fields) =>
   fields.map(([label, value], i, arr) => (
@@ -519,6 +626,11 @@ export default function CarScanner() {
   const [ownerSaving, setOwnerSaving] = useState(false);
   const [ownerScans, setOwnerScans] = useState(null);
   const [ownerProfile, setOwnerProfile] = useState(null);
+  const [streak, setStreak] = useState({ current: 0, lastDate: null, days: [] });
+  const [sightingsCount, setSightingsCount] = useState(0);
+  const [compareMode, setCompareMode] = useState(false);
+  const [compareSelection, setCompareSelection] = useState([]);
+  const [achCategory, setAchCategory] = useState("todos");
   const fileRef = useRef(null);
   const pressRef = useRef(null);
   const [deviceId] = useState(() => {
@@ -538,6 +650,9 @@ export default function CarScanner() {
       if (sc) setScanCount(parseInt(sc, 10));
       const om = localStorage.getItem("scancar-owner-v1");
       if (om) setOwnerMap(JSON.parse(om));
+      setStreak(loadStreak());
+      const sgc = localStorage.getItem("scancar-sightings-count");
+      if (sgc) setSightingsCount(parseInt(sgc, 10));
     } catch (e) {}
     try {
       const params = new URLSearchParams(window.location.search);
@@ -570,6 +685,7 @@ export default function CarScanner() {
       try { localStorage.setItem(DB_KEY + "-count", String(next)); } catch (e) {}
       return next;
     });
+    setStreak(bumpStreak());
   };
 
   const saveToDb = (car) => {
@@ -887,6 +1003,11 @@ Calibración para México:
         }),
       });
       setSightingStatus("done");
+      setSightingsCount(n => {
+        const next = n + 1;
+        try { localStorage.setItem("scancar-sightings-count", String(next)); } catch (e) {}
+        return next;
+      });
       setTimeout(() => setSightingStatus(null), 2500);
     } catch (e) {
       setSightingStatus("error");
@@ -980,6 +1101,70 @@ Calibración para México:
   };
 
   // ── Views ────────────────────────────────────────────────────
+
+  const renderHomeExtras = () => {
+    const xp = calcXP(db, scanCount, sightingsCount);
+    const lvl = getLevelInfo(xp);
+    const uniqueModels = new Set(db.map(d => `${d.make}|${d.model}`)).size;
+    const raros = db.filter(d => Number(d.rarity_score) >= 6).length;
+    const recent = db.slice(0, 3);
+
+    return (
+      <div>
+        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr 1fr", gap: 8, marginBottom: 16 }}>
+          {[
+            { value: scanCount, label: "escaneados" },
+            { value: uniqueModels, label: "modelos únicos" },
+            { value: raros, label: "raros+" },
+            { value: lvl.level, label: "nivel" },
+          ].map(({ value, label }) => (
+            <div key={label} style={{ background: C.surface, borderRadius: 14, border: `1px solid ${C.border}`, padding: "12px 8px", textAlign: "center" }}>
+              <p style={{ fontSize: 22, fontWeight: 700, color: C.fg, margin: 0, lineHeight: 1 }}>{value}</p>
+              <p style={{ fontSize: 10, color: C.muted, margin: "4px 0 0", lineHeight: 1.2 }}>{label}</p>
+            </div>
+          ))}
+        </div>
+
+        {recent.length > 0 && (
+          <div style={{ marginBottom: 16 }}>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", marginBottom: 10 }}>
+              <p style={{ fontSize: 11, fontWeight: 600, letterSpacing: "0.07em", textTransform: "uppercase", color: C.muted, margin: 0 }}>Actividad reciente</p>
+              <button onClick={() => { setSelectedCar(null); setView("gallery"); }} style={{ background: "transparent", border: "none", color: C.muted, fontSize: 12, cursor: "pointer", fontFamily: font, padding: 0 }}>Ver todo ›</button>
+            </div>
+            <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+              {recent.map(d => {
+                const rc = getRarityColor(d.rarity_score);
+                return (
+                  <button
+                    key={d.id}
+                    onClick={() => { setSelectedCar(d); setLivePrice(null); setView("car-detail"); fetchPrice(d); setOwnerSetupOpen(false); setOwnerScans(null); }}
+                    style={{ background: C.surface, border: `1px solid ${C.border}`, borderRadius: r.lg, padding: "10px 14px 10px 10px", display: "flex", alignItems: "center", cursor: "pointer", textAlign: "left", fontFamily: font, width: "100%", gap: 12 }}
+                  >
+                    {d.photo ? (
+                      <img src={d.photo} alt="" style={{ width: 44, height: 44, objectFit: "cover", borderRadius: 8, flexShrink: 0 }} />
+                    ) : (
+                      <div style={{ width: 44, height: 44, borderRadius: 8, background: C.accent, flexShrink: 0, display: "flex", alignItems: "center", justifyContent: "center", color: C.border }}>
+                        <IconCar size={18} />
+                      </div>
+                    )}
+                    <div style={{ flex: 1, minWidth: 0 }}>
+                      <p style={{ fontSize: 14, fontWeight: 600, color: C.fg, margin: "0 0 2px", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{d.make} {d.model}</p>
+                      <p style={{ fontSize: 11, color: C.muted, margin: 0 }}>{val(d.year)} · {timeAgoMs(d.id)}</p>
+                    </div>
+                    {d.rarity_score > 0 && (
+                      <span style={{ fontSize: 11, fontWeight: 700, color: rc, background: rc + "15", borderRadius: r.pill, padding: "2px 8px", flexShrink: 0 }}>
+                        {getRarityLabel(d.rarity_score)}
+                      </span>
+                    )}
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+        )}
+      </div>
+    );
+  };
 
   const renderScanArea = () => (
     <label style={{ display: "block", cursor: "pointer" }}>
@@ -1195,6 +1380,26 @@ Calibración para México:
 
     return (
       <div>
+        {/* Title + Comparador toggle */}
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 16 }}>
+          <p style={{ fontSize: 20, fontWeight: 700, color: C.fg, margin: 0, letterSpacing: "-0.02em" }}>Mi Garage</p>
+          {db.length >= 2 && (
+            <button
+              onClick={() => { setCompareMode(m => !m); setCompareSelection([]); setDeleteMode(null); }}
+              style={{
+                display: "flex", alignItems: "center", gap: 6,
+                background: compareMode ? C.primary : "transparent",
+                color: compareMode ? "#fff" : C.fg,
+                border: `1px solid ${compareMode ? C.primary : C.border}`,
+                borderRadius: r.pill, padding: "6px 14px", fontSize: 12, fontWeight: 600,
+                cursor: "pointer", fontFamily: font,
+              }}
+            >
+              <IconCompare /> {compareMode ? "Cancelar" : "Comparar"}
+            </button>
+          )}
+        </div>
+
         {/* Profile card */}
         {profile && (
           <div style={{ background: C.surface, borderRadius: r.xl, border: `1px solid ${C.border}`, padding: "16px 20px", marginBottom: 16 }}>
@@ -1272,16 +1477,25 @@ Calibración para México:
               <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
                 {group.cars.map(d => {
                   const rc = getRarityColor(d.rarity_score);
+                  const selected = compareSelection.includes(d.id);
                   return (
                     <button
                       key={d.id}
-                      onTouchStart={() => { clearTimeout(pressRef.current); pressRef.current = setTimeout(() => { if (navigator.vibrate) navigator.vibrate(25); setDeleteMode(d.id); }, 500); }}
+                      onTouchStart={() => { if (compareMode) return; clearTimeout(pressRef.current); pressRef.current = setTimeout(() => { if (navigator.vibrate) navigator.vibrate(25); setDeleteMode(d.id); }, 500); }}
                       onTouchEnd={() => clearTimeout(pressRef.current)}
                       onTouchCancel={() => clearTimeout(pressRef.current)}
-                      onMouseDown={() => { clearTimeout(pressRef.current); pressRef.current = setTimeout(() => setDeleteMode(d.id), 600); }}
+                      onMouseDown={() => { if (compareMode) return; clearTimeout(pressRef.current); pressRef.current = setTimeout(() => setDeleteMode(d.id), 600); }}
                       onMouseUp={() => clearTimeout(pressRef.current)}
                       onContextMenu={e => e.preventDefault()}
                       onClick={() => {
+                        if (compareMode) {
+                          setCompareSelection(prev => {
+                            if (prev.includes(d.id)) return prev.filter(id => id !== d.id);
+                            if (prev.length >= 3) return prev;
+                            return [...prev, d.id];
+                          });
+                          return;
+                        }
                         if (deleteMode) { setDeleteMode(null); return; }
                         setSelectedCar(d); setLivePrice(null); setView("car-detail"); fetchPrice(d);
                         setOwnerSetupOpen(false); setOwnerScans(null);
@@ -1292,16 +1506,26 @@ Calibración para México:
                         }
                       }}
                       style={{
-                        background: deleteMode === d.id ? "#FFF5F5" : C.surface,
-                        border: `1px solid ${deleteMode === d.id ? C.red + "55" : C.border}`,
+                        background: selected ? C.primary + "0D" : deleteMode === d.id ? "#FFF5F5" : C.surface,
+                        border: `1px solid ${selected ? C.primary : deleteMode === d.id ? C.red + "55" : C.border}`,
                         borderRadius: r.lg, padding: "10px 14px 10px 10px",
                         display: "flex", alignItems: "center", cursor: "pointer",
                         textAlign: "left", fontFamily: font, width: "100%", gap: 12,
                         transition: "background 0.12s, border-color 0.12s",
                       }}
-                      onMouseEnter={e => { if (deleteMode !== d.id) e.currentTarget.style.background = C.accent; }}
-                      onMouseLeave={e => { e.currentTarget.style.background = deleteMode === d.id ? "#FFF5F5" : C.surface; }}
+                      onMouseEnter={e => { if (deleteMode !== d.id && !selected) e.currentTarget.style.background = C.accent; }}
+                      onMouseLeave={e => { e.currentTarget.style.background = selected ? C.primary + "0D" : deleteMode === d.id ? "#FFF5F5" : C.surface; }}
                     >
+                      {compareMode && (
+                        <div style={{
+                          width: 22, height: 22, borderRadius: "50%", flexShrink: 0,
+                          border: `1.5px solid ${selected ? C.primary : C.border}`,
+                          background: selected ? C.primary : "transparent",
+                          display: "flex", alignItems: "center", justifyContent: "center", color: "#fff",
+                        }}>
+                          {selected && <IconCheck size={11} />}
+                        </div>
+                      )}
                       {d.photo ? (
                         <img src={d.photo} alt="" style={{ width: 54, height: 54, objectFit: "cover", borderRadius: 8, flexShrink: 0 }} />
                       ) : (
@@ -1331,7 +1555,7 @@ Calibración para México:
                               {getRarityLabel(d.rarity_score)}
                             </span>
                           )}
-                          <span style={{ color: C.border, fontSize: 16 }}>›</span>
+                          {!compareMode && <span style={{ color: C.border, fontSize: 16 }}>›</span>}
                         </div>
                       )}
                     </button>
@@ -1340,6 +1564,207 @@ Calibración para México:
               </div>
             </div>
           ))}
+        </div>
+
+        {/* Floating compare bar */}
+        {compareMode && compareSelection.length >= 2 && (
+          <div style={{ position: "fixed", bottom: "calc(74px + env(safe-area-inset-bottom, 0px))", left: 0, right: 0, display: "flex", justifyContent: "center", zIndex: 25, pointerEvents: "none" }}>
+            <button
+              onClick={() => setView("compare")}
+              style={{ pointerEvents: "auto", background: C.primary, color: "#fff", border: "none", borderRadius: r.pill, padding: "13px 28px", fontSize: 14, fontWeight: 700, cursor: "pointer", fontFamily: font, boxShadow: "0 4px 16px rgba(0,0,0,0.25)" }}
+            >
+              Comparar ({compareSelection.length})
+            </button>
+          </div>
+        )}
+      </div>
+    );
+  };
+
+  const renderCompare = () => {
+    const cars = compareSelection.map(id => db.find(d => d.id === id)).filter(Boolean);
+    const rows = [
+      ["Año", c => c.year],
+      ["Rareza", c => Number(c.rarity_score) > 0 ? `${getRarityLabel(c.rarity_score)} (${c.rarity_score}/10)` : "—"],
+      ["Potencia", c => c.horsepower],
+      ["Peso", c => fmtKg(c.weight)],
+      ["0-100", c => addUnit(c.zero_to_100, " s")],
+      ["Vel. máxima", c => addUnit(c.top_speed, " km/h")],
+      ["Tracción", c => c.drivetrain],
+      ["Transmisión", c => c.transmission],
+      ["Valor estimado", c => c.libro_azul_estimate],
+      ["Unidades en MX", c => c.units_in_mx],
+    ];
+
+    return (
+      <div>
+        <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 16 }}>
+          <button
+            onClick={() => { setView("gallery"); setCompareMode(false); setCompareSelection([]); }}
+            style={{ background: C.surface, border: `1px solid ${C.border}`, borderRadius: "50%", width: 36, height: 36, display: "flex", alignItems: "center", justifyContent: "center", color: C.fg, cursor: "pointer" }}
+          >
+            <IconBack />
+          </button>
+          <p style={{ fontSize: 20, fontWeight: 700, color: C.fg, margin: 0, letterSpacing: "-0.02em" }}>Comparador</p>
+        </div>
+
+        {/* Car headers */}
+        <div style={{ display: "grid", gridTemplateColumns: `1fr repeat(${cars.length}, 1fr)`, gap: 6, marginBottom: 10 }}>
+          <div />
+          {cars.map(c => (
+            <div key={c.id} style={{ textAlign: "center" }}>
+              {c.photo ? (
+                <img src={c.photo} alt="" style={{ width: "100%", height: 50, objectFit: "cover", borderRadius: 8 }} />
+              ) : (
+                <div style={{ width: "100%", height: 50, borderRadius: 8, background: C.accent, display: "flex", alignItems: "center", justifyContent: "center", color: C.border }}>
+                  <IconCar size={18} />
+                </div>
+              )}
+              <p style={{ fontSize: 11, fontWeight: 700, color: C.fg, margin: "4px 0 0", lineHeight: 1.2 }}>{c.make}</p>
+              <p style={{ fontSize: 10, color: C.muted, margin: 0, lineHeight: 1.2 }}>{c.model}</p>
+            </div>
+          ))}
+        </div>
+
+        {/* Spec rows */}
+        <div style={{ background: C.surface, borderRadius: r.lg, border: `1px solid ${C.border}`, overflow: "hidden" }}>
+          {rows.map(([label, fn], i) => (
+            <div key={label} style={{
+              display: "grid", gridTemplateColumns: `1fr repeat(${cars.length}, 1fr)`, gap: 6,
+              padding: "10px 12px", alignItems: "center",
+              borderBottom: i < rows.length - 1 ? `1px solid ${C.border}` : "none",
+            }}>
+              <span style={{ fontSize: 12, color: C.muted }}>{label}</span>
+              {cars.map(c => (
+                <span key={c.id} style={{ fontSize: 12, fontWeight: 600, color: C.fg, textAlign: "center" }}>{val(fn(c))}</span>
+              ))}
+            </div>
+          ))}
+        </div>
+      </div>
+    );
+  };
+
+  const renderProfile = () => {
+    const xp = calcXP(db, scanCount, sightingsCount);
+    const lvl = getLevelInfo(xp);
+    const title = getLevelTitle(lvl.level);
+    const unicornios = db.filter(d => Number(d.rarity_score) === 10).length;
+    const raros = db.filter(d => Number(d.rarity_score) >= 6).length;
+    const week = weekDays();
+    const today = todayStr();
+    const ctx = { db, scanCount, streak, sightingsCount };
+    const cats = [
+      { id: "todos", label: "Todos" },
+      { id: "coleccion", label: "Colección" },
+      { id: "descubrimiento", label: "Descubrimiento" },
+      { id: "especiales", label: "Especiales" },
+    ];
+    const filtered = achCategory === "todos" ? ACHIEVEMENTS : ACHIEVEMENTS.filter(a => a.category === achCategory);
+    const unlockedCount = ACHIEVEMENTS.filter(a => a.check(ctx)).length;
+
+    return (
+      <div>
+        <p style={{ fontSize: 20, fontWeight: 700, color: C.fg, margin: "0 0 16px", letterSpacing: "-0.02em" }}>Mi Perfil</p>
+
+        {/* Level card */}
+        <div style={{ background: C.surface, borderRadius: r.xl, border: `1px solid ${C.border}`, padding: 20, marginBottom: 16 }}>
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 14 }}>
+            <div>
+              <p style={{ fontSize: 11, fontWeight: 600, letterSpacing: "0.07em", textTransform: "uppercase", color: C.muted, margin: "0 0 4px" }}>Nivel {lvl.level}</p>
+              <p style={{ fontSize: 20, fontWeight: 700, color: C.fg, margin: 0 }}>{title}</p>
+            </div>
+            <div style={{ width: 52, height: 52, borderRadius: "50%", background: C.primary, color: "#fff", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 18, fontWeight: 800, flexShrink: 0 }}>
+              {lvl.level}
+            </div>
+          </div>
+          <div style={{ height: 8, background: C.accent, borderRadius: 4, overflow: "hidden", marginBottom: 6 }}>
+            <div style={{ width: `${lvl.pct}%`, height: "100%", background: C.primary, borderRadius: 4 }} />
+          </div>
+          <p style={{ fontSize: 12, color: C.muted, margin: 0 }}>{lvl.current.toLocaleString("es-MX")} / {lvl.needed.toLocaleString("es-MX")} XP</p>
+        </div>
+
+        {/* Stats row */}
+        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr 1fr", gap: 8, marginBottom: 16 }}>
+          {[
+            { value: scanCount, label: "escaneados" },
+            { value: db.length, label: "colección" },
+            { value: raros, label: "raros+" },
+            { value: unicornios, label: "unicornios" },
+          ].map(({ value, label }) => (
+            <div key={label} style={{ background: C.surface, borderRadius: 14, border: `1px solid ${C.border}`, padding: "12px 8px", textAlign: "center" }}>
+              <p style={{ fontSize: 22, fontWeight: 700, color: C.fg, margin: 0, lineHeight: 1 }}>{value}</p>
+              <p style={{ fontSize: 10, color: C.muted, margin: "4px 0 0", lineHeight: 1.2 }}>{label}</p>
+            </div>
+          ))}
+        </div>
+
+        {/* Racha */}
+        <div style={{ background: C.surface, borderRadius: r.xl, border: `1px solid ${C.border}`, padding: "16px 20px", marginBottom: 16 }}>
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", marginBottom: 12 }}>
+            <p style={{ fontSize: 11, fontWeight: 600, letterSpacing: "0.07em", textTransform: "uppercase", color: C.muted, margin: 0 }}>Racha actual</p>
+            <p style={{ fontSize: 14, fontWeight: 700, color: C.orange, margin: 0 }}>🔥 {streak.current} día{streak.current !== 1 ? "s" : ""}</p>
+          </div>
+          <div style={{ display: "flex", justifyContent: "space-between" }}>
+            {week.map(({ label, date }) => {
+              const done = (streak.days || []).includes(date);
+              const isToday = date === today;
+              return (
+                <div key={date} style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 6 }}>
+                  <span style={{ fontSize: 11, color: C.muted }}>{label}</span>
+                  <div style={{
+                    width: 28, height: 28, borderRadius: "50%",
+                    background: done ? C.green : C.accent,
+                    color: done ? "#fff" : C.muted,
+                    display: "flex", alignItems: "center", justifyContent: "center",
+                    border: isToday ? `2px solid ${C.primary}` : "none",
+                  }}>
+                    {done ? <IconCheck size={12} /> : null}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+
+        {/* Logros */}
+        <div>
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", marginBottom: 10 }}>
+            <p style={{ fontSize: 11, fontWeight: 600, letterSpacing: "0.07em", textTransform: "uppercase", color: C.muted, margin: 0 }}>Logros</p>
+            <p style={{ fontSize: 12, color: C.muted, margin: 0 }}>{unlockedCount} / {ACHIEVEMENTS.length}</p>
+          </div>
+          <div style={{ display: "flex", gap: 8, marginBottom: 12, overflowX: "auto", paddingBottom: 2 }}>
+            {cats.map(c => (
+              <button
+                key={c.id}
+                onClick={() => setAchCategory(c.id)}
+                style={{
+                  flexShrink: 0,
+                  background: achCategory === c.id ? C.primary : C.accent,
+                  color: achCategory === c.id ? "#fff" : C.fg,
+                  border: "none", borderRadius: r.pill, padding: "6px 14px", fontSize: 12, fontWeight: 600,
+                  cursor: "pointer", fontFamily: font,
+                }}
+              >
+                {c.label}
+              </button>
+            ))}
+          </div>
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 8 }}>
+            {filtered.map(a => {
+              const unlocked = a.check(ctx);
+              return (
+                <div key={a.id} style={{
+                  background: C.surface, border: `1px solid ${C.border}`, borderRadius: r.lg,
+                  padding: "14px 10px", textAlign: "center", opacity: unlocked ? 1 : 0.4,
+                }}>
+                  <p style={{ fontSize: 26, margin: "0 0 6px" }}>{unlocked ? a.icon : "🔒"}</p>
+                  <p style={{ fontSize: 11, fontWeight: 600, color: C.fg, margin: "0 0 2px", lineHeight: 1.3 }}>{a.title}</p>
+                  <p style={{ fontSize: 10, color: C.muted, margin: 0, lineHeight: 1.3 }}>{a.desc}</p>
+                </div>
+              );
+            })}
+          </div>
         </div>
       </div>
     );
@@ -1666,8 +2091,9 @@ Calibración para México:
     { id: "scan", label: "Escanear", Icon: IconScanTab },
     { id: "gallery", label: "Garage", Icon: IconGarageTab },
     { id: "map", label: "Mapa", Icon: IconMapTab },
+    { id: "profile", label: "Perfil", Icon: IconProfileTab },
   ];
-  const activeTab = view === "car-detail" ? "gallery" : view === "owner" ? "scan" : view;
+  const activeTab = view === "car-detail" || view === "compare" ? "gallery" : view === "owner" ? "scan" : view;
   const hideNav = view === "shared" || view === "owner";
 
   return (
@@ -1690,7 +2116,7 @@ Calibración para México:
       <div style={{ maxWidth: 480, margin: "0 auto", padding: "20px 20px calc(80px + env(safe-area-inset-bottom, 0px))" }} onClick={() => { if (deleteMode) setDeleteMode(null); }}>
         {view === "scan" && (
           <>
-            {stage === "idle" && renderScanArea()}
+            {stage === "idle" && <>{renderHomeExtras()}{renderScanArea()}</>}
             {stage === "analyzing" && renderAnalyzing()}
             {stage === "question" && renderQuestion()}
             {stage === "result" && result && renderResult()}
@@ -1698,8 +2124,10 @@ Calibración para México:
           </>
         )}
         {view === "gallery" && renderGallery()}
+        {view === "compare" && renderCompare()}
         {view === "car-detail" && renderCarDetail()}
         {view === "map" && <MapView onViewCar={viewSightingCar} deviceId={deviceId} />}
+        {view === "profile" && renderProfile()}
         {view === "shared" && renderShared()}
         {view === "owner" && renderOwnerPublic()}
       </div>
@@ -1720,7 +2148,7 @@ Calibración para México:
               key={id}
               onClick={() => {
                 if (id === "scan") { reset(); setView("scan"); }
-                else if (id === "gallery") { setSelectedCar(null); setView("gallery"); }
+                else if (id === "gallery") { setSelectedCar(null); setCompareMode(false); setCompareSelection([]); setView("gallery"); }
                 else setView(id);
               }}
               style={{
